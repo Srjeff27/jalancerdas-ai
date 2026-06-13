@@ -1,0 +1,1 @@
+"""JalanCerdas AI Backend Application."""

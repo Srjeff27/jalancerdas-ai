@@ -1,0 +1,22 @@
+# JalanCerdas AI - YOLO Dataset Configuration
+# Pothole detection dataset config for YOLOv8/YOLO11 training
+# Usage: yolo detect train data=configs/data.yaml model=yolov8n.pt
+
+# Path to dataset root directory (relative to this config file)
+path: ../dataset
+
+# Train images directory
+train: train/images
+
+# Validation images directory
+val: val/images
+
+# Test images directory (optional, used for final evaluation)
+test: test/images
+
+# Number of classes
+nc: 1
+
+# Class names
+names:
+  0: pothole

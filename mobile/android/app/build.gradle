@@ -1,0 +1,53 @@
+package: com.jalancerdas.ai
+name: JalanCerdas AI
+description: AI-powered pothole detection for road condition monitoring
+version: 1.0.0+1
+
+ndkVersion: flutter.ndkVersion
+
+compileSdk: flutter.compileSdkVersion
+ndk: flutter.ndkVersion
+
+android {
+    namespace "com.jalancerdas.ai"
+    compileSdk: 34
+    ndkVersion: flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    sourceSets {
+        main.java.srcDirs += 'src/main/kotlin'
+    }
+
+    defaultConfig {
+        applicationId "com.jalancerdas.ai"
+        minSdk: 24
+        targetSdk: 34
+        versionCode: flutter.versionCode
+        versionName: flutter.versionName
+
+        // Required for camera and location
+        multiDexEnabled true
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug
+        }
+    }
+}
+
+flutter {
+    source '../..'
+}
+
+dependencies {
+    implementation 'androidx.multidex:multidex:2.0.1'
+}
