@@ -41,27 +41,13 @@ DATA_YAML = DATASET_DIR / "data.yaml"
 # ============================================================
 def install_deps():
     print("\n📦 Installing dependencies...")
-    deps = ["ultralytics", "kaggle", "pyyaml", "tqdm"]
+    deps = ["ultralytics", "kagglehub", "pyyaml", "tqdm"]
     for dep in deps:
         subprocess.check_call(
             [sys.executable, "-m", "pip", "install", "-q", dep],
             stdout=subprocess.DEVNULL,
         )
     print("  ✅ All dependencies installed")
-
-
-def check_kaggle():
-    """Check kaggle.json exists."""
-    kaggle_json = Path.home() / ".kaggle" / "kaggle.json"
-    if not kaggle_json.exists():
-        print("\n❌ kaggle.json not found!")
-        print("   1. Buka https://www.kaggle.com/settings")
-        print("   2. Klik 'Create New Token'")
-        print("   3. Copy kaggle.json ke ~/.kaggle/kaggle.json")
-        print("   4. chmod 600 ~/.kaggle/kaggle.json")
-        sys.exit(1)
-    os.chmod(kaggle_json, 0o600)
-    print("  ✅ Kaggle credentials OK")
 
 
 def check_gpu():
@@ -82,25 +68,43 @@ def check_gpu():
 #  STEP 1: Download dataset
 # ============================================================
 def download_dataset():
-    print(f"\n📥 Downloading {KAGGLE_DATASET}...")
+    print(f"\n📥 Downloading {KAGGLE_DATASET} via kagglehub...")
 
     if DATASET_DIR.exists() and any((DATASET_DIR / "train").rglob("*.jpg")):
         print("  Dataset already exists, skipping download")
         return
 
-    RAW_DIR.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        ["kaggle", "datasets", "download", "-d", KAGGLE_DATASET,
-         "-p", str(RAW_DIR), "--unzip"],
-        check=True,
-    )
+    import kagglehub
+    path = kagglehub.dataset_download(KAGGLE_DATASET)
+    print(f"  Downloaded to: {path}")
 
-    # Show what we got
+    # kagglehub downloads to ~/.cache/kagglehub/ — copy to project
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Find the actual data inside the downloaded path
+    dl_path = Path(path)
+    # Copy contents to RAW_DIR
+    if dl_path != RAW_DIR:
+        for item in dl_path.iterdir():
+            dest = RAW_DIR / item.name
+            if item.is_dir():
+                if dest.exists():
+                    shutil.rmtree(dest)
+                shutil.copytree(item, dest)
+            else:
+                shutil.copy2(item, dest)
+
+    # Show structure
     print("\n  📁 Downloaded structure:")
-    for p in sorted(RAW_DIR.rglob("*"))[:30]:
+    count = 0
+    for p in sorted(RAW_DIR.rglob("*")):
         if p.is_file():
             depth = len(p.relative_to(RAW_DIR).parts) - 1
             print(f"    {'  '*depth}{p.name}")
+            count += 1
+            if count >= 20:
+                print("    ... (truncated)")
+                break
 
     return RAW_DIR
 
@@ -466,7 +470,6 @@ def main():
 
     # 0. Setup
     install_deps()
-    check_kaggle()
     has_gpu = check_gpu()
 
     # 1. Download
