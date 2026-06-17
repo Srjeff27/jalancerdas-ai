@@ -150,20 +150,24 @@ class DetectionDetailScreen extends StatelessWidget {
   Widget _buildTypeChip(DetectionRecord detection) {
     Color chipColor;
     switch (detection.damageType) {
-      case DamageType.pothole:
+      case DamageType.lubang:
         chipColor = const Color(0xFFFF5252);
         break;
-      case DamageType.crack:
+      case DamageType.retak_memanjang:
         chipColor = const Color(0xFFFF9800);
         break;
-      case DamageType.depression:
+      case DamageType.retak_kulit_buaya:
         chipColor = const Color(0xFF9C27B0);
         break;
-      case DamageType.bump:
+      case DamageType.retak_blok:
         chipColor = const Color(0xFF2196F3);
         break;
-      default:
-        chipColor = Colors.grey;
+      case DamageType.retak_pinggir:
+        chipColor = const Color(0xFF00E676);
+        break;
+      case DamageType.pengelupasan_lapisan_permukaan:
+        chipColor = const Color(0xFFE91E63);
+        break;
     }
 
     return Container(

@@ -2,8 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  late TextEditingController _apiUrlController;
+
+  @override
+  void initState() {
+    super.initState();
+    final settings = context.read<SettingsProvider>();
+    _apiUrlController = TextEditingController(text: settings.apiUrl);
+  }
+
+  @override
+  void dispose() {
+    _apiUrlController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,6 +42,11 @@ class SettingsScreen extends StatelessWidget {
       ),
       body: Consumer<SettingsProvider>(
         builder: (context, settings, child) {
+          // Sync controller text if settings change externally
+          if (_apiUrlController.text != settings.apiUrl) {
+            _apiUrlController.text = settings.apiUrl;
+          }
+
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -30,7 +55,7 @@ class SettingsScreen extends StatelessWidget {
               const SizedBox(height: 8),
               _buildTextField(
                 label: 'API URL',
-                value: settings.apiUrl,
+                controller: _apiUrlController,
                 icon: Icons.link,
                 onChanged: (value) => settings.setApiUrl(value),
               ),
@@ -149,7 +174,7 @@ class SettingsScreen extends StatelessWidget {
 
   Widget _buildTextField({
     required String label,
-    required String value,
+    required TextEditingController controller,
     required IconData icon,
     required Function(String) onChanged,
   }) {
@@ -158,7 +183,7 @@ class SettingsScreen extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         child: TextField(
-          controller: TextEditingController(text: value),
+          controller: controller,
           onChanged: onChanged,
           style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(

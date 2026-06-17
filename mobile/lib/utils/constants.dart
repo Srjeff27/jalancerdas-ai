@@ -7,7 +7,7 @@ class AppConstants {
   static const String appVersion = '1.0.0';
 
   // Default API URL
-  static const String defaultApiUrl = 'http://localhost:8000/api/v1';
+  static const String defaultApiUrl = 'http://localhost:8000/api';
 
   // Detection defaults
   static const double defaultConfidenceThreshold = 0.65;
@@ -18,16 +18,17 @@ class AppConstants {
 
   // Model config
   static const int modelInputSize = 640;
-  static const int numDetectionClasses = 5;
+  static const int numDetectionClasses = 6;
   static const double nmsIouThreshold = 0.45;
 
   // Labels
   static const List<String> damageTypeLabels = [
-    'Pothole',
-    'Crack',
-    'Depression',
-    'Bump',
-    'Other',
+    'Lubang',
+    'Retak Memanjang',
+    'Retak Kulit Buaya',
+    'Retak Blok',
+    'Retak Pinggir',
+    'Pengelupasan Lapisan Permukaan',
   ];
 
   // Status strings

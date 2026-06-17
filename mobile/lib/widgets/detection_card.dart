@@ -126,25 +126,30 @@ class DetectionCard extends StatelessWidget {
     Color color;
 
     switch (detection.damageType) {
-      case DamageType.pothole:
+      case DamageType.lubang:
         icon = Icons.warning_amber_rounded;
         color = const Color(0xFFFF5252);
         break;
-      case DamageType.crack:
+      case DamageType.retak_memanjang:
         icon = Icons.linear_scale;
         color = const Color(0xFFFF9800);
         break;
-      case DamageType.depression:
+      case DamageType.retak_kulit_buaya:
         icon = Icons.trending_down;
         color = const Color(0xFF9C27B0);
         break;
-      case DamageType.bump:
+      case DamageType.retak_blok:
         icon = Icons.trending_up;
         color = const Color(0xFF2196F3);
         break;
-      default:
-        icon = Icons.help_outline;
-        color = Colors.grey;
+      case DamageType.retak_pinggir:
+        icon = Icons.compare_arrows;
+        color = const Color(0xFF00E676);
+        break;
+      case DamageType.pengelupasan_lapisan_permukaan:
+        icon = Icons.layers_clear;
+        color = const Color(0xFFE91E63);
+        break;
     }
 
     return Icon(icon, color: color, size: 28);
@@ -195,16 +200,18 @@ class DetectionCard extends StatelessWidget {
 
   Color _getDamageColor() {
     switch (detection.damageType) {
-      case DamageType.pothole:
+      case DamageType.lubang:
         return const Color(0xFFFF5252);
-      case DamageType.crack:
+      case DamageType.retak_memanjang:
         return const Color(0xFFFF9800);
-      case DamageType.depression:
+      case DamageType.retak_kulit_buaya:
         return const Color(0xFF9C27B0);
-      case DamageType.bump:
+      case DamageType.retak_blok:
         return const Color(0xFF2196F3);
-      default:
-        return Colors.grey;
+      case DamageType.retak_pinggir:
+        return const Color(0xFF00E676);
+      case DamageType.pengelupasan_lapisan_permukaan:
+        return const Color(0xFFE91E63);
     }
   }
 

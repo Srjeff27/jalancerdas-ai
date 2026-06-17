@@ -51,10 +51,8 @@ class LocationService {
       if (!hasPermission) return null;
 
       _currentPosition = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
-        ),
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
       );
 
       return _currentPosition;
@@ -79,10 +77,8 @@ class LocationService {
 
       // Get initial position
       _currentPosition = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
-        ),
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
       );
       if (_currentPosition != null) {
         onPositionUpdate?.call(_currentPosition!);

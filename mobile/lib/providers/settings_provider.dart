@@ -4,8 +4,8 @@ import '../models/app_settings.dart';
 
 class SettingsProvider extends ChangeNotifier {
   static const String _boxName = 'app_settings';
-  late Box<AppSettings> _box;
-  late AppSettings _settings;
+  Box<AppSettings>? _box;
+  AppSettings _settings = AppSettings();
 
   SettingsProvider() {
     _initialize();
@@ -23,12 +23,13 @@ class SettingsProvider extends ChangeNotifier {
     try {
       _box = await Hive.openBox<AppSettings>(_boxName);
 
-      if (_box.isEmpty) {
+      if (_box!.isEmpty) {
         _settings = AppSettings();
-        await _box.put('settings', _settings);
+        await _box!.put('settings', _settings);
       } else {
-        _settings = _box.get('settings') ?? AppSettings();
+        _settings = _box!.get('settings') ?? AppSettings();
       }
+      notifyListeners();
     } catch (e) {
       debugPrint('SettingsProvider: Failed to initialize: $e');
       _settings = AppSettings();
@@ -80,7 +81,7 @@ class SettingsProvider extends ChangeNotifier {
   /// Save settings to Hive
   Future<void> _save() async {
     try {
-      await _box.put('settings', _settings);
+      await _box?.put('settings', _settings);
     } catch (e) {
       debugPrint('SettingsProvider: Failed to save: $e');
     }

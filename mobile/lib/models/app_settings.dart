@@ -1,6 +1,5 @@
 import 'package:hive/hive.dart';
 
-part 'app_settings.g.dart';
 
 @HiveType(typeId: 3)
 class AppSettings extends HiveObject {
@@ -26,7 +25,7 @@ class AppSettings extends HiveObject {
   String? authToken;
 
   AppSettings({
-    this.apiUrl = 'http://localhost:8000/api/v1',
+    this.apiUrl = 'http://localhost:8000/api',
     this.confidenceThreshold = 0.65,
     this.autoUpload = true,
     this.offlineMode = false,

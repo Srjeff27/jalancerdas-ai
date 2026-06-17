@@ -35,7 +35,7 @@ class DetectionPainter extends CustomPainter {
         ..strokeWidth = 3.0;
 
       final rect = RRect.fromRectAndRadius(
-        detection.classIndex >= 0 && detection.classIndex < 5
+        detection.classIndex >= 0 && detection.classIndex < 6
             ? Rect.fromLTWH(
                 detection.x,
                 detection.y,
@@ -157,15 +157,17 @@ class DetectionPainter extends CustomPainter {
   Color _getColor(int classIndex) {
     switch (classIndex) {
       case 0:
-        return const Color(0xFFFF5252); // pothole - red
+        return const Color(0xFFFF5252); // lubang - red
       case 1:
-        return const Color(0xFFFF9800); // crack - orange
+        return const Color(0xFFFF9800); // retak_memanjang - orange
       case 2:
-        return const Color(0xFF9C27B0); // depression - purple
+        return const Color(0xFF9C27B0); // retak_kulit_buaya - purple
       case 3:
-        return const Color(0xFF2196F3); // bump - blue
+        return const Color(0xFF2196F3); // retak_blok - blue
+      case 4:
+        return const Color(0xFF00E676); // retak_pinggir - green
       default:
-        return const Color(0xFF00E676); // other - green
+        return const Color(0xFFE91E63); // pengelupasan_lapisan_permukaan - pink
     }
   }
 

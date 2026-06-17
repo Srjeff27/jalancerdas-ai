@@ -98,7 +98,7 @@ class AppSettingsAdapter extends TypeAdapter<AppSettings> {
       fields[reader.readByte()] = reader.read();
     }
     return AppSettings(
-      apiUrl: fields[0] as String? ?? 'http://localhost:8000/api/v1',
+      apiUrl: fields[0] as String? ?? 'http://localhost:8000/api',
       confidenceThreshold: fields[1] as double? ?? 0.65,
       autoUpload: fields[2] as bool? ?? true,
       offlineMode: fields[3] as bool? ?? false,

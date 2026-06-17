@@ -1,7 +1,7 @@
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:camera/camera.dart';
+import 'package:tflite_flutter/tflite_flutter.dart';
 import '../models/detection_record.dart';
 
 /// Bounding box from YOLO output
@@ -25,15 +25,19 @@ class BoundingBox {
   DamageType get damageType {
     switch (classIndex) {
       case 0:
-        return DamageType.pothole;
+        return DamageType.retak_memanjang;
       case 1:
-        return DamageType.crack;
+        return DamageType.pengelupasan_lapisan_permukaan;
       case 2:
-        return DamageType.depression;
+        return DamageType.lubang;
       case 3:
-        return DamageType.bump;
+        return DamageType.retak_kulit_buaya;
+      case 4:
+        return DamageType.retak_blok;
+      case 5:
+        return DamageType.retak_pinggir;
       default:
-        return DamageType.other;
+        return DamageType.retak_pinggir;
     }
   }
 }
@@ -55,23 +59,24 @@ class DetectionResult {
 
 class DetectionService {
   // TFLite interpreter - lazy loaded
-  dynamic _interpreter;
+  Interpreter? _interpreter;
   bool _modelLoaded = false;
   bool _mockMode = false;
 
   // YOLO model config
   static const int inputSize = 640;
-  static const int numClasses = 5; // pothole, crack, depression, bump, other
+  static const int numClasses = 6;
   static const double confidenceThreshold = 0.5;
   static const double nmsIouThreshold = 0.45;
 
-  // Damage type labels
+  // Damage type labels (matching model class order)
   static const List<String> labels = [
-    'pothole',
-    'crack',
-    'depression',
-    'bump',
-    'other',
+    'retak_memanjang',
+    'pengelupasan_lapisan_permukaan',
+    'lubang',
+    'retak_kulit_buaya',
+    'retak_blok',
+    'retak_pinggir',
   ];
 
   bool get isModelLoaded => _modelLoaded;
@@ -80,18 +85,13 @@ class DetectionService {
   /// Load TFLite model from assets
   Future<bool> loadModel() async {
     try {
-      // Try loading TFLite model
-      // In production, load from assets/models/model.tflite
-      // _interpreter = await Interpreter.fromAsset('assets/models/model.tflite');
-      // _modelLoaded = true;
-
-      // For now, fall back to mock mode
-      debugPrint('DetectionService: TFLite model not found, using mock mode');
-      _mockMode = true;
-      _modelLoaded = false;
-      return false;
+      // Load TFLite model
+      _interpreter = await Interpreter.fromAsset('assets/models/pothole_yolo.tflite');
+      _modelLoaded = true;
+      debugPrint('DetectionService: TFLite model loaded successfully');
+      return true;
     } catch (e) {
-      debugPrint('DetectionService: Failed to load model: $e');
+      debugPrint('DetectionService: Failed to load model, using mock mode: $e');
       _mockMode = true;
       _modelLoaded = false;
       return false;
@@ -131,14 +131,15 @@ class DetectionService {
     // Convert camera image to input tensor
     final input = _preprocessImage(image);
 
-    // Prepare output buffer
+    // Prepare output buffer for YOLOv8 format
+    // Output shape: [1, numClasses + 4, 8400]
     final output = List.filled(
-      1 * 5 * (5 + numClasses) * inputSize * inputSize,
+      1 * (numClasses + 4) * 8400,
       0.0,
-    ).reshape([1, 5, 5 + numClasses, inputSize, inputSize]);
+    ).reshape([1, numClasses + 4, 8400]);
 
     // Run inference
-    _interpreter.run(input, output);
+    _interpreter!.run(input, output);
 
     // Parse output
     final detections = _parseOutput(output, threshold, image.width, image.height);
@@ -154,13 +155,65 @@ class DetectionService {
   }
 
   /// Preprocess camera image to model input
+  /// Converts YUV420 to RGB and resizes to model input size
   dynamic _preprocessImage(CameraImage image) {
-    // Convert YUV420 to RGB and resize
-    // This is a simplified version - production would need proper conversion
-    return image.planes[0].bytes;
+    // Convert YUV420 to RGB
+    final int width = image.width;
+    final int height = image.height;
+    final int uvRowStride = image.planes[1].bytesPerRow;
+    final int uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
+
+    final rgbBuffer = Uint8List(width * height * 3);
+
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        final int uvIndex = uvRowStride * (y >> 1) + uvPixelStride * (x >> 1);
+        final int yValue = image.planes[0].bytes[y * width + x] & 0xFF;
+        final int uValue = image.planes[1].bytes[uvIndex] & 0xFF;
+        final int vValue = image.planes[2].bytes[uvIndex] & 0xFF;
+
+        // YUV to RGB conversion
+        int r = (yValue + 1.370705 * (vValue - 128)).round();
+        int g = (yValue - 0.337633 * (uValue - 128) - 0.698001 * (vValue - 128)).round();
+        int b = (yValue + 1.732446 * (uValue - 128)).round();
+
+        r = r.clamp(0, 255);
+        g = g.clamp(0, 255);
+        b = b.clamp(0, 255);
+
+        final int pixelIndex = (y * width + x) * 3;
+        rgbBuffer[pixelIndex] = r;
+        rgbBuffer[pixelIndex + 1] = g;
+        rgbBuffer[pixelIndex + 2] = b;
+      }
+    }
+
+    // Resize to model input size (simplified - create input tensor)
+    // For production, use proper image resizing
+    final input = List.filled(
+      1 * inputSize * inputSize * 3,
+      0.0,
+    );
+
+    // Simple nearest-neighbor resize
+    for (int y = 0; y < inputSize; y++) {
+      for (int x = 0; x < inputSize; x++) {
+        final int srcX = (x * width / inputSize).floor().clamp(0, width - 1);
+        final int srcY = (y * height / inputSize).floor().clamp(0, height - 1);
+        final int srcIndex = (srcY * width + srcX) * 3;
+        final int dstIndex = (y * inputSize + x) * 3;
+
+        // Normalize to [0, 1] and convert to CHW format
+        input[dstIndex] = rgbBuffer[srcIndex] / 255.0;
+        input[dstIndex + 1] = rgbBuffer[srcIndex + 1] / 255.0;
+        input[dstIndex + 2] = rgbBuffer[srcIndex + 2] / 255.0;
+      }
+    }
+
+    return input.reshape([1, inputSize, inputSize, 3]);
   }
 
-  /// Parse YOLO output tensor into bounding boxes
+  /// Parse YOLOv8 output tensor into bounding boxes
   List<BoundingBox> _parseOutput(
     dynamic output,
     double threshold,
@@ -169,45 +222,39 @@ class DetectionService {
   ) {
     final detections = <BoundingBox>[];
 
-    // YOLO output parsing
-    // Output shape: [1, 5, 5 + numClasses, inputSize, inputSize]
-    // For each grid cell, check if confidence > threshold
+    // YOLOv8 output shape: [1, numClasses + 4, 8400]
+    // Each column: [x_center, y_center, width, height, class_scores...]
+    final numDetections = output[0][0].length;
 
-    for (int i = 0; i < inputSize; i++) {
-      for (int j = 0; j < inputSize; j++) {
-        for (int k = 0; k < 5; k++) {
-          final objConf = output[0][k][4][i][j] as double;
-          if (objConf > threshold) {
-            // Find best class
-            int bestClass = 0;
-            double bestClassScore = 0;
-            for (int c = 0; c < numClasses; c++) {
-              final score = output[0][k][5 + c][i][j] as double;
-              if (score > bestClassScore) {
-                bestClassScore = score;
-                bestClass = c;
-              }
-            }
+    for (int i = 0; i < numDetections; i++) {
+      // Get bounding box coordinates
+      final cx = output[0][0][i] as double;
+      final cy = output[0][1][i] as double;
+      final w = output[0][2][i] as double;
+      final h = output[0][3][i] as double;
 
-            final confidence = objConf * bestClassScore;
-            if (confidence > threshold) {
-              // Decode bounding box
-              final cx = (output[0][k][0][i][j] as double) / inputSize;
-              final cy = (output[0][k][1][i][j] as double) / inputSize;
-              final w = (output[0][k][2][i][j] as double) / inputSize;
-              final h = (output[0][k][3][i][j] as double) / inputSize;
-
-              detections.add(BoundingBox(
-                x: (cx - w / 2) * imgWidth,
-                y: (cy - h / 2) * imgHeight,
-                width: w * imgWidth,
-                height: h * imgHeight,
-                classIndex: bestClass,
-                confidence: confidence,
-              ));
-            }
-          }
+      // Find best class
+      int bestClass = 0;
+      double bestClassScore = 0;
+      for (int c = 0; c < numClasses; c++) {
+        final score = output[0][4 + c][i] as double;
+        if (score > bestClassScore) {
+          bestClassScore = score;
+          bestClass = c;
         }
+      }
+
+      // Apply confidence threshold
+      if (bestClassScore > threshold) {
+        // Scale to image dimensions
+        detections.add(BoundingBox(
+          x: (cx - w / 2) * imgWidth / inputSize,
+          y: (cy - h / 2) * imgHeight / inputSize,
+          width: w * imgWidth / inputSize,
+          height: h * imgHeight / inputSize,
+          classIndex: bestClass,
+          confidence: bestClassScore,
+        ));
       }
     }
 

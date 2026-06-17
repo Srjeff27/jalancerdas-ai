@@ -73,6 +73,8 @@ String getDamageTypeColorName(int typeIndex) {
       return 'Purple';
     case 3:
       return 'Blue';
+    case 4:
+      return 'Green';
     default:
       return 'Grey';
   }

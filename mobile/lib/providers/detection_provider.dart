@@ -207,12 +207,12 @@ class DetectionProvider extends ChangeNotifier {
 
   /// Handle a detection event
   void _handleDetection(int classIndex, double confidence, double lat, double lng) {
-    // Create detection record
+    // Create detection record - use classIndex directly for DamageType.values lookup
     final record = DetectionRecord(
       id: 'det_${DateTime.now().millisecondsSinceEpoch}',
-      damageType: DetectionService.labels.length > classIndex
+      damageType: classIndex >= 0 && classIndex < DamageType.values.length
           ? DamageType.values[classIndex]
-          : DamageType.other,
+          : DamageType.retak_pinggir,
       confidence: confidence,
       latitude: lat,
       longitude: lng,

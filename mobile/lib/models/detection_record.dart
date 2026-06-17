@@ -1,39 +1,43 @@
 import 'package:hive/hive.dart';
 
-part 'detection_record.g.dart';
 
 @HiveType(typeId: 0)
 enum DamageType implements Comparable<DamageType> {
   @HiveField(0)
-  pothole,
+  lubang,
 
   @HiveField(1)
-  crack,
+  retak_memanjang,
 
   @HiveField(2)
-  depression,
+  retak_kulit_buaya,
 
   @HiveField(3)
-  bump,
+  retak_blok,
 
   @HiveField(4)
-  other;
+  retak_pinggir,
+
+  @HiveField(5)
+  pengelupasan_lapisan_permukaan;
 
   @override
   int compareTo(DamageType other) => index.compareTo(other.index);
 
   String get displayName {
     switch (this) {
-      case DamageType.pothole:
-        return 'Pothole';
-      case DamageType.crack:
-        return 'Crack';
-      case DamageType.depression:
-        return 'Depression';
-      case DamageType.bump:
-        return 'Bump';
-      case DamageType.other:
-        return 'Other';
+      case DamageType.lubang:
+        return 'Lubang';
+      case DamageType.retak_memanjang:
+        return 'Retak Memanjang';
+      case DamageType.retak_kulit_buaya:
+        return 'Retak Kulit Buaya';
+      case DamageType.retak_blok:
+        return 'Retak Blok';
+      case DamageType.retak_pinggir:
+        return 'Retak Pinggir';
+      case DamageType.pengelupasan_lapisan_permukaan:
+        return 'Pengelupasan Lapisan Permukaan';
     }
   }
 }

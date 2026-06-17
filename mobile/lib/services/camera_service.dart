@@ -62,7 +62,7 @@ class CameraService {
   }
 
   /// Start image stream for continuous detection
-  Future<void> startImageStream(CameraImageCallback onImageAvailable) async {
+  Future<void> startImageStream(void Function(CameraImage) onImageAvailable) async {
     if (!_isInitialized || _controller == null) return;
 
     try {
