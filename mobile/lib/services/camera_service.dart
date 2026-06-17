@@ -34,7 +34,7 @@ class CameraService {
 
       _controller = CameraController(
         camera,
-        ResolutionPreset.medium,
+        ResolutionPreset.high, // 720p — better detail for detection
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.yuv420,
       );
