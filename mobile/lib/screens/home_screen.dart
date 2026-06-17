@@ -30,9 +30,11 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Detection auto-starts in DetectionProvider._initialize()
+    // Fallback: if camera is ready but detection hasn't started, start it
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<DetectionProvider>();
-      if (!provider.isDetecting) {
+      if (!provider.isDetecting && provider.hasCamera) {
         provider.startDetection();
       }
     });

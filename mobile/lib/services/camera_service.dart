@@ -6,9 +6,11 @@ class CameraService {
   List<CameraDescription> _cameras = [];
   int _currentCameraIndex = 0;
   bool _isInitialized = false;
+  bool _isStreaming = false;
 
   CameraController? get controller => _controller;
   bool get isInitialized => _isInitialized;
+  bool get isStreaming => _isStreaming;
   List<CameraDescription> get cameras => _cameras;
   bool get hasCamera => _cameras.isNotEmpty;
 
@@ -39,6 +41,7 @@ class CameraService {
 
       await _controller!.initialize();
       _isInitialized = true;
+      debugPrint('CameraService: Camera initialized successfully');
     } catch (e) {
       debugPrint('CameraService: Failed to initialize camera: $e');
       _isInitialized = false;
@@ -61,15 +64,44 @@ class CameraService {
     }
   }
 
-  /// Start image stream for continuous detection
-  Future<void> startImageStream(void Function(CameraImage) onImageAvailable) async {
-    if (!_isInitialized || _controller == null) return;
-
-    try {
-      await _controller!.startImageStream(onImageAvailable);
-    } catch (e) {
-      debugPrint('CameraService: Failed to start image stream: $e');
+  /// Start image stream for continuous detection.
+  /// Includes retry logic — waits for camera to be truly ready.
+  Future<bool> startImageStream(void Function(CameraImage) onImageAvailable) async {
+    if (!_isInitialized || _controller == null) {
+      debugPrint('CameraService: Cannot start stream — camera not initialized');
+      return false;
     }
+
+    // If already streaming, don't restart
+    if (_isStreaming && _controller!.value.isStreamingImages) {
+      debugPrint('CameraService: Already streaming');
+      return true;
+    }
+
+    // Retry up to 5 times with increasing delay
+    for (int attempt = 1; attempt <= 5; attempt++) {
+      try {
+        // Wait a bit for camera to stabilize after init
+        await Future.delayed(Duration(milliseconds: 300 * attempt));
+
+        if (_controller == null || !_isInitialized) {
+          debugPrint('CameraService: Camera disposed during retry');
+          return false;
+        }
+
+        await _controller!.startImageStream(onImageAvailable);
+        _isStreaming = true;
+        debugPrint('CameraService: Image stream started (attempt $attempt)');
+        return true;
+      } catch (e) {
+        debugPrint('CameraService: Stream start failed (attempt $attempt): $e');
+        if (attempt == 5) {
+          debugPrint('CameraService: All retry attempts failed');
+          return false;
+        }
+      }
+    }
+    return false;
   }
 
   /// Stop image stream
@@ -80,8 +112,10 @@ class CameraService {
       if (_controller!.value.isStreamingImages) {
         await _controller!.stopImageStream();
       }
+      _isStreaming = false;
     } catch (e) {
       debugPrint('CameraService: Failed to stop image stream: $e');
+      _isStreaming = false;
     }
   }
 
@@ -89,14 +123,19 @@ class CameraService {
   Future<void> switchCamera() async {
     if (_cameras.length < 2) return;
 
+    // Stop stream before switching
+    await stopImageStream();
+
     _currentCameraIndex = (_currentCameraIndex + 1) % _cameras.length;
     await _initializeCamera(_cameras[_currentCameraIndex]);
   }
 
   /// Dispose camera resources
   Future<void> dispose() async {
+    await stopImageStream();
     await _controller?.dispose();
     _controller = null;
     _isInitialized = false;
+    _isStreaming = false;
   }
 }

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/detection_record.dart';
@@ -13,7 +14,7 @@ import '../services/upload_service.dart';
 import '../services/offline_queue_service.dart';
 import '../utils/annotation_painter.dart';
 
-class DetectionProvider extends ChangeNotifier {
+class DetectionProvider extends ChangeNotifier with WidgetsBindingObserver {
   final CameraService _cameraService;
   final LocationService _locationService;
   final DetectionService _detectionService;
@@ -22,6 +23,7 @@ class DetectionProvider extends ChangeNotifier {
 
   // State
   bool _isDetecting = false;
+  bool _shouldBeDetecting = false; // User intent
   int _detectionCount = 0;
   double _currentConfidence = 0.0;
   DetectionRecord? _lastDetection;
@@ -59,6 +61,7 @@ class DetectionProvider extends ChangeNotifier {
         _detectionService = detectionService,
         _uploadService = uploadService,
         _offlineQueueService = offlineQueueService {
+    WidgetsBinding.instance.addObserver(this);
     _initialize();
   }
 
@@ -111,27 +114,97 @@ class DetectionProvider extends ChangeNotifier {
     );
 
     notifyListeners();
+
+    // Auto-start detection after everything is ready
+    // Small delay to ensure camera preview is rendered
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (_hasCamera || _mockMode) {
+      startDetection();
+    }
   }
+
+  // ─── Lifecycle Handling ──────────────────────────────────────
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Pause detection when app is not visible
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      if (_isDetecting) {
+        _pauseDetection();
+      }
+    }
+
+    // Resume detection when app comes back
+    if (state == AppLifecycleState.resumed) {
+      if (_shouldBeDetecting) {
+        _resumeDetection();
+      }
+    }
+  }
+
+  void _pauseDetection() async {
+    _isDetecting = false;
+    _detectionTimer?.cancel();
+    _detectionTimer = null;
+
+    if (_hasCamera && _cameraService.isInitialized) {
+      await _cameraService.stopImageStream();
+    }
+
+    debugPrint('DetectionProvider: Paused (app lifecycle)');
+    notifyListeners();
+  }
+
+  Future<void> _resumeDetection() async {
+    if (_isDetecting) return;
+
+    debugPrint('DetectionProvider: Resuming...');
+    _isDetecting = true;
+    notifyListeners();
+
+    if (_hasCamera && _cameraService.isInitialized) {
+      final started = await _cameraService.startImageStream((CameraImage image) {
+        _processImageFrame(image);
+      });
+
+      if (!started) {
+        debugPrint('DetectionProvider: Failed to resume image stream');
+        _isDetecting = false;
+        _shouldBeDetecting = false;
+        notifyListeners();
+      }
+    } else {
+      // Timer fallback
+      _detectionTimer = Timer.periodic(
+        const Duration(milliseconds: 2000),
+        (_) => _processFrame(),
+      );
+    }
+  }
+
+  // ─── Detection Control ──────────────────────────────────────
 
   /// Start detection loop
   Future<void> startDetection() async {
     if (_isDetecting) return;
 
+    _shouldBeDetecting = true;
     _isDetecting = true;
     notifyListeners();
 
     // Use image stream if camera is available (real-time detection)
-    // Otherwise fall back to timer-based detection
     if (_hasCamera && _cameraService.isInitialized) {
-      try {
-        await _cameraService.startImageStream((CameraImage image) {
-          _processImageFrame(image);
-        });
-        debugPrint('DetectionProvider: Using image stream for detection');
-        return; // Image stream active, no timer needed
-      } catch (e) {
-        debugPrint('DetectionProvider: Could not start image stream: $e');
+      final started = await _cameraService.startImageStream((CameraImage image) {
+        _processImageFrame(image);
+      });
+
+      if (started) {
+        debugPrint('DetectionProvider: Image stream active');
+        return;
       }
+      debugPrint('DetectionProvider: Image stream failed, falling back to timer');
     }
 
     // Fallback: periodic timer when no camera stream
@@ -144,6 +217,7 @@ class DetectionProvider extends ChangeNotifier {
 
   /// Stop detection
   Future<void> stopDetection() async {
+    _shouldBeDetecting = false;
     _isDetecting = false;
     _detectionTimer?.cancel();
     _detectionTimer = null;
@@ -157,13 +231,14 @@ class DetectionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ─── Frame Processing ───────────────────────────────────────
+
   /// Process a single frame from timer
   void _processFrame() {
     if (!_isDetecting) return;
 
-    // Get current position
     final position = _locationService.currentPosition;
-    final lat = position?.latitude ?? -6.2088; // Default: Jakarta
+    final lat = position?.latitude ?? -6.2088;
     final lng = position?.longitude ?? 106.8456;
 
     if (_mockMode) {
@@ -180,25 +255,19 @@ class DetectionProvider extends ChangeNotifier {
 
     // Run detection
     _detectionService.detectFromImage(image).then((result) {
-      if (!_isDetecting) return; // Check again after async gap
+      if (!_isDetecting) return;
 
       if (result.detections.isNotEmpty) {
-        // Detections found — update both current and persisted
         _currentDetections = result.detections;
         _lastPersistedDetections = List.from(result.detections);
 
-        // Find highest confidence detection
         final best = result.detections.reduce(
           (a, b) => a.confidence > b.confidence ? a : b,
         );
 
         _currentConfidence = best.confidence;
-
-        // Process detection
         _handleDetection(best.classIndex, best.confidence, lat, lng, result.detections);
       } else {
-        // No detections this frame — keep previous persisted detections visible
-        // but clear current frame detections
         _currentDetections = [];
         // _lastPersistedDetections stays unchanged — boxes remain visible
       }
@@ -216,7 +285,6 @@ class DetectionProvider extends ChangeNotifier {
 
     _currentConfidence = mockDetection.confidence;
 
-    // For mock mode, generate a single detection box
     final mockBox = BoundingBox(
       x: 100 + (DateTime.now().millisecond % 400).toDouble(),
       y: 50 + (DateTime.now().millisecond % 200).toDouble(),
@@ -237,7 +305,8 @@ class DetectionProvider extends ChangeNotifier {
     );
   }
 
-  /// Handle a detection event
+  // ─── Detection Handling ─────────────────────────────────────
+
   String? _lastDetectedImagePath;
   String? get lastDetectedImagePath => _lastDetectedImagePath;
 
@@ -248,7 +317,6 @@ class DetectionProvider extends ChangeNotifier {
     double lng,
     List<BoundingBox> detections,
   ) async {
-    // Create detection record
     final record = DetectionRecord(
       id: 'det_${DateTime.now().millisecondsSinceEpoch}',
       damageType: classIndex >= 0 && classIndex < DamageType.values.length
@@ -266,7 +334,7 @@ class DetectionProvider extends ChangeNotifier {
     _detectionCount++;
     notifyListeners();
 
-    // Auto-capture + annotate photo when detection happens
+    // Auto-capture + annotate photo
     try {
       final imagePath = await _cameraService.takePicture();
       if (imagePath != null) {
@@ -275,16 +343,12 @@ class DetectionProvider extends ChangeNotifier {
 
         // Annotate photo with bounding boxes + labels
         final appDir = await getApplicationDocumentsDirectory();
-        final annotatedPath =
-            '${appDir.path}/annotated_${record.id}.jpg';
+        final annotatedPath = '${appDir.path}/annotated_${record.id}.jpg';
 
-        // Get actual image dimensions from camera controller
         final imgWidth =
-            _cameraService.controller?.value.previewSize?.height?.toInt() ??
-                640;
+            _cameraService.controller?.value.previewSize?.height?.toInt() ?? 640;
         final imgHeight =
-            _cameraService.controller?.value.previewSize?.width?.toInt() ??
-                480;
+            _cameraService.controller?.value.previewSize?.width?.toInt() ?? 480;
 
         final savedAnnotatedPath = await AnnotationPainter.annotateAndSave(
           imagePath: imagePath,
@@ -294,7 +358,6 @@ class DetectionProvider extends ChangeNotifier {
           outputPath: annotatedPath,
         );
 
-        // Save to Hive with local image path
         record.localImagePath = savedAnnotatedPath;
         _lastDetectedImagePath = savedAnnotatedPath;
         notifyListeners();
@@ -303,14 +366,12 @@ class DetectionProvider extends ChangeNotifier {
       debugPrint('DetectionProvider: Auto-capture/annotate failed: $e');
     }
 
-    // Save to Hive
     _saveDetection(record);
-
-    // Auto-upload if enabled and connected
     _tryUpload(record);
   }
 
-  /// Save detection to local Hive storage
+  // ─── Storage & Upload ───────────────────────────────────────
+
   void _saveDetection(DetectionRecord record) {
     try {
       final box = Hive.box<DetectionRecord>('detections');
@@ -320,7 +381,6 @@ class DetectionProvider extends ChangeNotifier {
     }
   }
 
-  /// Try to upload detection
   Future<void> _tryUpload(DetectionRecord record) async {
     if (!_isConnected) {
       await _offlineQueueService.enqueue(record);
@@ -341,19 +401,25 @@ class DetectionProvider extends ChangeNotifier {
     }
   }
 
-  /// Take a manual picture
+  // ─── Public Methods ─────────────────────────────────────────
+
   Future<String?> takePicture() async {
     return await _cameraService.takePicture();
   }
 
-  /// Switch camera
   Future<void> switchCamera() async {
     await _cameraService.switchCamera();
     _hasCamera = _cameraService.hasCamera;
+
+    // Restart detection if it was active
+    if (_shouldBeDetecting) {
+      await stopDetection();
+      await startDetection();
+    }
+
     notifyListeners();
   }
 
-  /// Get all detection records from Hive
   List<DetectionRecord> getAllDetections() {
     try {
       final box = Hive.box<DetectionRecord>('detections');
@@ -365,7 +431,6 @@ class DetectionProvider extends ChangeNotifier {
     }
   }
 
-  /// Get detection by ID
   DetectionRecord? getDetectionById(String id) {
     try {
       final box = Hive.box<DetectionRecord>('detections');
@@ -375,10 +440,8 @@ class DetectionProvider extends ChangeNotifier {
     }
   }
 
-  /// Delete detection
   Future<void> deleteDetection(String id) async {
     try {
-      // Also delete the annotated image file
       final record = getDetectionById(id);
       if (record?.localImagePath != null) {
         final file = File(record!.localImagePath!);
@@ -394,11 +457,9 @@ class DetectionProvider extends ChangeNotifier {
     }
   }
 
-  /// Clear all detections
   Future<void> clearAllDetections() async {
     try {
       final box = Hive.box<DetectionRecord>('detections');
-      // Delete all annotated image files
       for (final record in box.values) {
         if (record.localImagePath != null) {
           final file = File(record.localImagePath!);
@@ -419,6 +480,7 @@ class DetectionProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _detectionTimer?.cancel();
     _cameraService.dispose();
     _locationService.dispose();
