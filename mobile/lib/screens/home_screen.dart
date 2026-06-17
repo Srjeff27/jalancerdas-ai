@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
@@ -86,10 +87,20 @@ class _HomeScreenState extends State<HomeScreen> {
             // Camera preview
             _buildCameraPreview(provider),
 
-            // Detection overlay
+            // Detection overlay with image dimensions
             if (provider.isDetecting)
               DetectionOverlay(
                 detections: provider.currentDetections,
+                imageWidth: provider.cameraController?.value.previewSize?.height?.toInt() ?? 640,
+                imageHeight: provider.cameraController?.value.previewSize?.width?.toInt() ?? 480,
+              ),
+
+            // Last detection photo preview
+            if (provider.lastDetectedImagePath != null)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 60,
+                right: 16,
+                child: _buildDetectionPreview(),
               ),
 
             // Top status bar
@@ -135,6 +146,52 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         );
       },
+    );
+  }
+
+  Widget _buildDetectionPreview() {
+    return GestureDetector(
+      onTap: () {
+        // Show full screen preview
+        if (provider.lastDetectedImagePath != null) {
+          showDialog(
+            context: context,
+            builder: (context) => Dialog(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.file(
+                  File(provider.lastDetectedImagePath!),
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+          );
+        }
+      },
+      child: Container(
+        width: 100,
+        height: 130,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: const Color(0xFFFF5252),
+            width: 2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.5),
+              blurRadius: 8,
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.file(
+            File(provider.lastDetectedImagePath!),
+            fit: BoxFit.cover,
+          ),
+        ),
+      ),
     );
   }
 
@@ -343,17 +400,7 @@ class _HomeScreenState extends State<HomeScreen> {
               _buildCircleButton(
                 icon: Icons.camera,
                 color: Colors.white.withOpacity(0.2),
-                onTap: () async {
-                  final path = await provider.takePicture();
-                  if (path != null && mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Photo saved: $path'),
-                        backgroundColor: const Color(0xFF2196F3),
-                      ),
-                    );
-                  }
-                },
+                onTap: () => _manualCapture(provider),
               ),
             ],
           ),
@@ -362,6 +409,21 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _manualCapture(DetectionProvider provider) async {
+    final path = await provider.takePicture();
+    if (path != null && mounted) {
+      setState(() {
+        // Photo saved via provider
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Photo saved: $path'),
+          backgroundColor: const Color(0xFF2196F3),
+        ),
+      );
+    }
   }
 
   Widget _buildInfoChip(

@@ -210,7 +210,11 @@ class DetectionProvider extends ChangeNotifier {
   }
 
   /// Handle a detection event
-  void _handleDetection(int classIndex, double confidence, double lat, double lng) {
+  // Callback for auto-captured detection images
+  String? _lastDetectedImagePath;
+  String? get lastDetectedImagePath => _lastDetectedImagePath;
+
+  void _handleDetection(int classIndex, double confidence, double lat, double lng) async {
     // Create detection record - use classIndex directly for DamageType.values lookup
     final record = DetectionRecord(
       id: 'det_${DateTime.now().millisecondsSinceEpoch}',
@@ -228,6 +232,17 @@ class DetectionProvider extends ChangeNotifier {
     _lastDetection = record;
     _detectionCount++;
     notifyListeners();
+
+    // Auto-capture photo when detection happens
+    try {
+      final imagePath = await _cameraService.takePicture();
+      if (imagePath != null) {
+        _lastDetectedImagePath = imagePath;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('DetectionProvider: Auto-capture failed: $e');
+    }
 
     // Save to Hive
     _saveDetection(record);
