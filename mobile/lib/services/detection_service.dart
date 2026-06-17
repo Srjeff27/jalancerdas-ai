@@ -57,11 +57,63 @@ class DetectionResult {
   });
 }
 
+/// Isolate-friendly preprocessing: YUV420 → RGB + resize + normalize
+/// Runs in a separate isolate to avoid blocking the UI thread
+List<dynamic> _preprocessInIsolate(Map<String, dynamic> args) {
+  final Uint8List yBytes = args['yBytes'];
+  final Uint8List uBytes = args['uBytes'];
+  final Uint8List vBytes = args['vBytes'];
+  final int width = args['width'];
+  final int height = args['height'];
+  final int uvRowStride = args['uvRowStride'];
+  final int uvPixelStride = args['uvPixelStride'];
+  final int inputSize = args['inputSize'];
+
+  // Output: Float32List for [1, inputSize, inputSize, 3]
+  final Float32List input = Float32List(1 * inputSize * inputSize * 3);
+
+  for (int y = 0; y < inputSize; y++) {
+    for (int x = 0; x < inputSize; x++) {
+      // Map output pixel to source pixel
+      final int srcX = (x * width / inputSize).floor().clamp(0, width - 1);
+      final int srcY = (y * height / inputSize).floor().clamp(0, height - 1);
+
+      // Get YUV values
+      final int yValue = yBytes[srcY * width + srcX] & 0xFF;
+      final int uvIndex =
+          uvRowStride * (srcY >> 1) + uvPixelStride * (srcX >> 1);
+      final int uValue = uBytes[uvIndex] & 0xFF;
+      final int vValue = vBytes[uvIndex] & 0xFF;
+
+      // YUV to RGB (integer math, faster than float)
+      final int rv = ((vValue - 128) * 112) >> 8;
+      final int guv = (((uValue - 128) * 86) >> 8) + (((vValue - 128) * 58) >> 8);
+      final int bu = ((uValue - 128) * 112) >> 8;
+      int r = (yValue + rv).clamp(0, 255);
+      int g = (yValue - guv).clamp(0, 255);
+      int b = (yValue + bu).clamp(0, 255);
+
+      // Normalize to [0, 1] and write to CHW format
+      final int dstIndex = (y * inputSize + x) * 3;
+      input[dstIndex] = r / 255.0;
+      input[dstIndex + 1] = g / 255.0;
+      input[dstIndex + 2] = b / 255.0;
+    }
+  }
+
+  return [input, width, height];
+}
+
 class DetectionService {
   // TFLite interpreter - lazy loaded
   Interpreter? _interpreter;
   bool _modelLoaded = false;
   bool _mockMode = false;
+
+  // Frame throttling
+  bool _isProcessing = false;
+  DateTime? _lastInferenceTime;
+  static const Duration _minInferenceInterval = Duration(milliseconds: 300);
 
   // YOLO model config
   static const int inputSize = 640;
@@ -85,8 +137,23 @@ class DetectionService {
   /// Load TFLite model from assets
   Future<bool> loadModel() async {
     try {
-      // Load TFLite model
-      _interpreter = await Interpreter.fromAsset('assets/models/pothole_yolo.tflite');
+      // Try to load with GPU delegate for faster inference
+      try {
+        final gpuDelegate = GpuDelegateV2();
+        final options = InterpreterOptions()..addDelegate(gpuDelegate);
+
+        _interpreter = await Interpreter.fromAsset(
+          'assets/models/pothole_yolo.tflite',
+          options: options,
+        );
+      } catch (e) {
+        // Fallback to CPU if GPU delegate fails
+        debugPrint('DetectionService: GPU delegate failed, using CPU: $e');
+        _interpreter = await Interpreter.fromAsset(
+          'assets/models/pothole_yolo.tflite',
+        );
+      }
+
       _modelLoaded = true;
       debugPrint('DetectionService: TFLite model loaded successfully');
       return true;
@@ -104,6 +171,7 @@ class DetectionService {
   }
 
   /// Process a camera image and return detections
+  /// Includes frame throttling to prevent overload
   Future<DetectionResult> detectFromImage(
     CameraImage image, {
     double threshold = confidenceThreshold,
@@ -114,22 +182,63 @@ class DetectionService {
       return _mockDetect(image, threshold, stopwatch);
     }
 
+    // Frame throttling: skip if too soon since last inference
+    if (_isProcessing) {
+      stopwatch.stop();
+      return DetectionResult(
+        detections: [],
+        imageWidth: image.width,
+        imageHeight: image.height,
+        inferenceTime: stopwatch.elapsed,
+      );
+    }
+
+    if (_lastInferenceTime != null &&
+        DateTime.now().difference(_lastInferenceTime!) <
+            _minInferenceInterval) {
+      stopwatch.stop();
+      return DetectionResult(
+        detections: [],
+        imageWidth: image.width,
+        imageHeight: image.height,
+        inferenceTime: stopwatch.elapsed,
+      );
+    }
+
+    _isProcessing = true;
+    _lastInferenceTime = DateTime.now();
+
     try {
-      return _runTFLiteDetection(image, threshold, stopwatch);
+      return await _runTFLiteDetection(image, threshold, stopwatch);
     } catch (e) {
       debugPrint('DetectionService: Inference failed: $e');
       return _mockDetect(image, threshold, stopwatch);
+    } finally {
+      _isProcessing = false;
     }
   }
 
-  /// Run real TFLite inference
-  DetectionResult _runTFLiteDetection(
+  /// Run real TFLite inference with optimized preprocessing
+  Future<DetectionResult> _runTFLiteDetection(
     CameraImage image,
     double threshold,
     Stopwatch stopwatch,
-  ) {
-    // Convert camera image to input tensor
-    final input = _preprocessImage(image);
+  ) async {
+    // Run preprocessing in a background isolate (non-blocking!)
+    final preprocessResult = await compute(_preprocessInIsolate, {
+      'yBytes': image.planes[0].bytes,
+      'uBytes': image.planes[1].bytes,
+      'vBytes': image.planes[2].bytes,
+      'width': image.width,
+      'height': image.height,
+      'uvRowStride': image.planes[1].bytesPerRow,
+      'uvPixelStride': image.planes[1].bytesPerPixel ?? 1,
+      'inputSize': inputSize,
+    });
+
+    final input = preprocessResult[0];
+    final imgWidth = preprocessResult[1] as int;
+    final imgHeight = preprocessResult[2] as int;
 
     // Prepare output buffer for YOLOv8 format
     // Output shape: [1, numClasses + 4, 8400]
@@ -142,75 +251,16 @@ class DetectionService {
     _interpreter!.run(input, output);
 
     // Parse output
-    final detections = _parseOutput(output, threshold, image.width, image.height);
+    final detections = _parseOutput(output, threshold, imgWidth, imgHeight);
 
     stopwatch.stop();
 
     return DetectionResult(
       detections: detections,
-      imageWidth: image.width,
-      imageHeight: image.height,
+      imageWidth: imgWidth,
+      imageHeight: imgHeight,
       inferenceTime: stopwatch.elapsed,
     );
-  }
-
-  /// Preprocess camera image to model input
-  /// Converts YUV420 to RGB and resizes to model input size
-  dynamic _preprocessImage(CameraImage image) {
-    // Convert YUV420 to RGB
-    final int width = image.width;
-    final int height = image.height;
-    final int uvRowStride = image.planes[1].bytesPerRow;
-    final int uvPixelStride = image.planes[1].bytesPerPixel ?? 1;
-
-    final rgbBuffer = Uint8List(width * height * 3);
-
-    for (int y = 0; y < height; y++) {
-      for (int x = 0; x < width; x++) {
-        final int uvIndex = uvRowStride * (y >> 1) + uvPixelStride * (x >> 1);
-        final int yValue = image.planes[0].bytes[y * width + x] & 0xFF;
-        final int uValue = image.planes[1].bytes[uvIndex] & 0xFF;
-        final int vValue = image.planes[2].bytes[uvIndex] & 0xFF;
-
-        // YUV to RGB conversion
-        int r = (yValue + 1.370705 * (vValue - 128)).round();
-        int g = (yValue - 0.337633 * (uValue - 128) - 0.698001 * (vValue - 128)).round();
-        int b = (yValue + 1.732446 * (uValue - 128)).round();
-
-        r = r.clamp(0, 255);
-        g = g.clamp(0, 255);
-        b = b.clamp(0, 255);
-
-        final int pixelIndex = (y * width + x) * 3;
-        rgbBuffer[pixelIndex] = r;
-        rgbBuffer[pixelIndex + 1] = g;
-        rgbBuffer[pixelIndex + 2] = b;
-      }
-    }
-
-    // Resize to model input size (simplified - create input tensor)
-    // For production, use proper image resizing
-    final input = List.filled(
-      1 * inputSize * inputSize * 3,
-      0.0,
-    );
-
-    // Simple nearest-neighbor resize
-    for (int y = 0; y < inputSize; y++) {
-      for (int x = 0; x < inputSize; x++) {
-        final int srcX = (x * width / inputSize).floor().clamp(0, width - 1);
-        final int srcY = (y * height / inputSize).floor().clamp(0, height - 1);
-        final int srcIndex = (srcY * width + srcX) * 3;
-        final int dstIndex = (y * inputSize + x) * 3;
-
-        // Normalize to [0, 1] and convert to CHW format
-        input[dstIndex] = rgbBuffer[srcIndex] / 255.0;
-        input[dstIndex + 1] = rgbBuffer[srcIndex + 1] / 255.0;
-        input[dstIndex + 2] = rgbBuffer[srcIndex + 2] / 255.0;
-      }
-    }
-
-    return input.reshape([1, inputSize, inputSize, 3]);
   }
 
   /// Parse YOLOv8 output tensor into bounding boxes

@@ -113,22 +113,26 @@ class DetectionProvider extends ChangeNotifier {
     _isDetecting = true;
     notifyListeners();
 
-    // Start periodic detection
-    _detectionTimer = Timer.periodic(
-      const Duration(milliseconds: 2000),
-      (_) => _processFrame(),
-    );
-
-    // Also try image stream if camera is available
+    // Use image stream if camera is available (real-time detection)
+    // Otherwise fall back to timer-based detection
     if (_hasCamera && _cameraService.isInitialized) {
       try {
         await _cameraService.startImageStream((CameraImage image) {
           _processImageFrame(image);
         });
+        debugPrint('DetectionProvider: Using image stream for detection');
+        return; // Image stream active, no timer needed
       } catch (e) {
         debugPrint('DetectionProvider: Could not start image stream: $e');
       }
     }
+
+    // Fallback: periodic timer when no camera stream
+    debugPrint('DetectionProvider: Using timer for detection');
+    _detectionTimer = Timer.periodic(
+      const Duration(milliseconds: 2000),
+      (_) => _processFrame(),
+    );
   }
 
   /// Stop detection
