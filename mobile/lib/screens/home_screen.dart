@@ -150,23 +150,25 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildDetectionPreview() {
+    final provider = context.read<DetectionProvider>();
+    final imagePath = provider.lastDetectedImagePath;
+    if (imagePath == null) return const SizedBox.shrink();
+
     return GestureDetector(
       onTap: () {
         // Show full screen preview
-        if (provider.lastDetectedImagePath != null) {
-          showDialog(
-            context: context,
-            builder: (context) => Dialog(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.file(
-                  File(provider.lastDetectedImagePath!),
-                  fit: BoxFit.contain,
-                ),
+        showDialog(
+          context: context,
+          builder: (context) => Dialog(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(
+                File(imagePath),
+                fit: BoxFit.contain,
               ),
             ),
-          );
-        }
+          ),
+        );
       },
       child: Container(
         width: 100,
@@ -187,7 +189,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(10),
           child: Image.file(
-            File(provider.lastDetectedImagePath!),
+            File(imagePath),
             fit: BoxFit.cover,
           ),
         ),
