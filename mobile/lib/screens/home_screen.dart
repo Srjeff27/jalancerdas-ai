@@ -87,15 +87,15 @@ class _HomeScreenState extends State<HomeScreen> {
             // Camera preview
             _buildCameraPreview(provider),
 
-            // Detection overlay with image dimensions
+            // Detection overlay — use persisted detections so boxes stay visible
             if (provider.isDetecting)
               DetectionOverlay(
-                detections: provider.currentDetections,
+                detections: provider.lastPersistedDetections,
                 imageWidth: provider.cameraController?.value.previewSize?.height?.toInt() ?? 640,
                 imageHeight: provider.cameraController?.value.previewSize?.width?.toInt() ?? 480,
               ),
 
-            // Last detection photo preview
+            // Last detection photo preview (annotated with boxes)
             if (provider.lastDetectedImagePath != null)
               Positioned(
                 top: MediaQuery.of(context).padding.top + 60,

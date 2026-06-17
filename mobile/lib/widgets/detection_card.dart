@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/detection_record.dart';
@@ -110,6 +111,27 @@ class DetectionCard extends StatelessWidget {
   }
 
   Widget _buildThumbnail() {
+    // Show actual photo if available
+    if (detection.localImagePath != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          width: 56,
+          height: 56,
+          child: Image.file(
+            File(detection.localImagePath!),
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return _buildFallbackIcon();
+            },
+          ),
+        ),
+      );
+    }
+    return _buildFallbackIcon();
+  }
+
+  Widget _buildFallbackIcon() {
     return Container(
       width: 56,
       height: 56,

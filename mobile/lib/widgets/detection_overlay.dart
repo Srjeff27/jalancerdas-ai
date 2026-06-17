@@ -15,8 +15,6 @@ class DetectionOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (detections.isEmpty) return const SizedBox.shrink();
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final widgetWidth = constraints.maxWidth;
@@ -64,26 +62,22 @@ class DetectionPainter extends CustomPainter {
         continue;
       }
 
-      final paint = Paint()
-        ..color = _getColor(detection.classIndex)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.0;
-
-      final rect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(x, y, w, h),
-        const Radius.circular(4),
-      );
-
-      // Draw bounding box
-      canvas.drawRRect(rect, paint);
+      final color = _getColor(detection.classIndex);
 
       // Draw fill with low opacity
       final fillPaint = Paint()
-        ..color = _getColor(detection.classIndex).withOpacity(0.1)
+        ..color = color.withOpacity(0.15)
         ..style = PaintingStyle.fill;
-      canvas.drawRRect(rect, fillPaint);
+      canvas.drawRect(Rect.fromLTWH(x, y, w, h), fillPaint);
 
-      // Draw confidence label
+      // Draw bounding box border
+      final borderPaint = Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3.0;
+      canvas.drawRect(Rect.fromLTWH(x, y, w, h), borderPaint);
+
+      // --- Label: damage type + confidence ---
       final labelText =
           '${DetectionService.labels[detection.classIndex]} ${(detection.confidence * 100).toStringAsFixed(0)}%';
 
@@ -98,24 +92,54 @@ class DetectionPainter extends CustomPainter {
         ),
         textDirection: TextDirection.ltr,
       );
-
       textPainter.layout();
 
-      final labelPaint = Paint()
-        ..color = _getColor(detection.classIndex)
-        ..style = PaintingStyle.fill;
-
+      // Label background
+      final labelPaint = Paint()..color = color;
       final labelY = y - 24 > 0 ? y - 24 : y;
-      final labelRect = RRect.fromRectAndRadius(
-        Rect.fromLTWH(x, labelY, textPainter.width + 12, 22),
-        const Radius.circular(4),
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(x, labelY, textPainter.width + 12, 22),
+          const Radius.circular(4),
+        ),
+        labelPaint,
       );
-
-      canvas.drawRRect(labelRect, labelPaint);
       textPainter.paint(canvas, Offset(x + 6, labelY + 3));
 
+      // --- Coordinates below the box ---
+      final coordText =
+          'x:${detection.x.toStringAsFixed(0)} y:${detection.y.toStringAsFixed(0)} '
+          'w:${detection.width.toStringAsFixed(0)} h:${detection.height.toStringAsFixed(0)}';
+
+      final coordPainter = TextPainter(
+        text: TextSpan(
+          text: coordText,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: (10 * (scaleX > 1 ? 1 : scaleX)).clamp(8, 11).toDouble(),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      );
+      coordPainter.layout();
+
+      final coordBg = Paint()..color = Colors.black.withOpacity(0.7);
+      final coordY = y + h + 2;
+      // Only draw if it fits on screen
+      if (coordY + 16 < size.height) {
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(x, coordY, coordPainter.width + 8, 16),
+            const Radius.circular(3),
+          ),
+          coordBg,
+        );
+        coordPainter.paint(canvas, Offset(x + 4, coordY + 1));
+      }
+
       // Draw corner markers
-      _drawCornerMarkers(canvas, x, y, w, h, detection.classIndex);
+      _drawCornerMarkers(canvas, x, y, w, h, color);
     }
   }
 
@@ -125,10 +149,10 @@ class DetectionPainter extends CustomPainter {
     double y,
     double w,
     double h,
-    int classIndex,
+    Color color,
   ) {
     final cornerPaint = Paint()
-      ..color = _getColor(classIndex)
+      ..color = color
       ..strokeWidth = 4.0
       ..strokeCap = StrokeCap.round;
 

@@ -1,14 +1,17 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/detection_record.dart';
 import '../services/camera_service.dart';
 import '../services/location_service.dart';
 import '../services/detection_service.dart';
 import '../services/upload_service.dart';
 import '../services/offline_queue_service.dart';
+import '../utils/annotation_painter.dart';
 
 class DetectionProvider extends ChangeNotifier {
   final CameraService _cameraService;
@@ -25,9 +28,12 @@ class DetectionProvider extends ChangeNotifier {
   bool _isConnected = true;
   bool _hasGps = false;
   bool _hasCamera = false;
-  List<BoundingBox> _currentDetections = [];
   bool _mockMode = true;
   Timer? _detectionTimer;
+
+  // Persistent detections — survive across frames until explicitly cleared
+  List<BoundingBox> _currentDetections = [];
+  List<BoundingBox> _lastPersistedDetections = [];
 
   // Getters
   bool get isDetecting => _isDetecting;
@@ -38,6 +44,7 @@ class DetectionProvider extends ChangeNotifier {
   bool get hasGps => _hasGps;
   bool get hasCamera => _hasCamera;
   List<BoundingBox> get currentDetections => _currentDetections;
+  List<BoundingBox> get lastPersistedDetections => _lastPersistedDetections;
   bool get mockMode => _mockMode;
   CameraController? get cameraController => _cameraService.controller;
 
@@ -141,6 +148,7 @@ class DetectionProvider extends ChangeNotifier {
     _detectionTimer?.cancel();
     _detectionTimer = null;
     _currentDetections = [];
+    _lastPersistedDetections = [];
 
     if (_hasCamera && _cameraService.isInitialized) {
       await _cameraService.stopImageStream();
@@ -166,16 +174,19 @@ class DetectionProvider extends ChangeNotifier {
   /// Process a camera image frame
   void _processImageFrame(CameraImage image) {
     if (!_isDetecting) return;
-
     final position = _locationService.currentPosition;
     final lat = position?.latitude ?? -6.2088;
     final lng = position?.longitude ?? 106.8456;
 
     // Run detection
     _detectionService.detectFromImage(image).then((result) {
-      _currentDetections = result.detections;
+      if (!_isDetecting) return; // Check again after async gap
 
       if (result.detections.isNotEmpty) {
+        // Detections found — update both current and persisted
+        _currentDetections = result.detections;
+        _lastPersistedDetections = List.from(result.detections);
+
         // Find highest confidence detection
         final best = result.detections.reduce(
           (a, b) => a.confidence > b.confidence ? a : b,
@@ -184,7 +195,12 @@ class DetectionProvider extends ChangeNotifier {
         _currentConfidence = best.confidence;
 
         // Process detection
-        _handleDetection(best.classIndex, best.confidence, lat, lng);
+        _handleDetection(best.classIndex, best.confidence, lat, lng, result.detections);
+      } else {
+        // No detections this frame — keep previous persisted detections visible
+        // but clear current frame detections
+        _currentDetections = [];
+        // _lastPersistedDetections stays unchanged — boxes remain visible
       }
 
       notifyListeners();
@@ -199,23 +215,40 @@ class DetectionProvider extends ChangeNotifier {
     );
 
     _currentConfidence = mockDetection.confidence;
-    _currentDetections = [];
+
+    // For mock mode, generate a single detection box
+    final mockBox = BoundingBox(
+      x: 100 + (DateTime.now().millisecond % 400).toDouble(),
+      y: 50 + (DateTime.now().millisecond % 200).toDouble(),
+      width: 80 + (DateTime.now().millisecond % 80).toDouble(),
+      height: 60 + (DateTime.now().millisecond % 60).toDouble(),
+      classIndex: mockDetection.damageType.index,
+      confidence: mockDetection.confidence,
+    );
+    _currentDetections = [mockBox];
+    _lastPersistedDetections = [mockBox];
 
     _handleDetection(
       mockDetection.damageType.index,
       mockDetection.confidence,
       lat,
       lng,
+      [mockBox],
     );
   }
 
   /// Handle a detection event
-  // Callback for auto-captured detection images
   String? _lastDetectedImagePath;
   String? get lastDetectedImagePath => _lastDetectedImagePath;
 
-  void _handleDetection(int classIndex, double confidence, double lat, double lng) async {
-    // Create detection record - use classIndex directly for DamageType.values lookup
+  void _handleDetection(
+    int classIndex,
+    double confidence,
+    double lat,
+    double lng,
+    List<BoundingBox> detections,
+  ) async {
+    // Create detection record
     final record = DetectionRecord(
       id: 'det_${DateTime.now().millisecondsSinceEpoch}',
       damageType: classIndex >= 0 && classIndex < DamageType.values.length
@@ -233,15 +266,41 @@ class DetectionProvider extends ChangeNotifier {
     _detectionCount++;
     notifyListeners();
 
-    // Auto-capture photo when detection happens
+    // Auto-capture + annotate photo when detection happens
     try {
       final imagePath = await _cameraService.takePicture();
       if (imagePath != null) {
         _lastDetectedImagePath = imagePath;
         notifyListeners();
+
+        // Annotate photo with bounding boxes + labels
+        final appDir = await getApplicationDocumentsDirectory();
+        final annotatedPath =
+            '${appDir.path}/annotated_${record.id}.jpg';
+
+        // Get actual image dimensions from camera controller
+        final imgWidth =
+            _cameraService.controller?.value.previewSize?.height?.toInt() ??
+                640;
+        final imgHeight =
+            _cameraService.controller?.value.previewSize?.width?.toInt() ??
+                480;
+
+        final savedAnnotatedPath = await AnnotationPainter.annotateAndSave(
+          imagePath: imagePath,
+          detections: detections,
+          imageWidth: imgWidth,
+          imageHeight: imgHeight,
+          outputPath: annotatedPath,
+        );
+
+        // Save to Hive with local image path
+        record.localImagePath = savedAnnotatedPath;
+        _lastDetectedImagePath = savedAnnotatedPath;
+        notifyListeners();
       }
     } catch (e) {
-      debugPrint('DetectionProvider: Auto-capture failed: $e');
+      debugPrint('DetectionProvider: Auto-capture/annotate failed: $e');
     }
 
     // Save to Hive
@@ -319,6 +378,14 @@ class DetectionProvider extends ChangeNotifier {
   /// Delete detection
   Future<void> deleteDetection(String id) async {
     try {
+      // Also delete the annotated image file
+      final record = getDetectionById(id);
+      if (record?.localImagePath != null) {
+        final file = File(record!.localImagePath!);
+        if (await file.exists()) {
+          await file.delete();
+        }
+      }
       final box = Hive.box<DetectionRecord>('detections');
       await box.delete(id);
       notifyListeners();
@@ -331,9 +398,19 @@ class DetectionProvider extends ChangeNotifier {
   Future<void> clearAllDetections() async {
     try {
       final box = Hive.box<DetectionRecord>('detections');
+      // Delete all annotated image files
+      for (final record in box.values) {
+        if (record.localImagePath != null) {
+          final file = File(record.localImagePath!);
+          if (await file.exists()) {
+            await file.delete();
+          }
+        }
+      }
       await box.clear();
       _detectionCount = 0;
       _lastDetection = null;
+      _lastDetectedImagePath = null;
       notifyListeners();
     } catch (e) {
       debugPrint('DetectionProvider: Failed to clear detections: $e');
