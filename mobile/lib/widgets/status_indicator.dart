@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../utils/constants.dart';
 
 class StatusIndicator extends StatelessWidget {
   final String label;
@@ -15,53 +16,48 @@ class StatusIndicator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.6),
-        borderRadius: BorderRadius.circular(20),
+        color: Colors.black.withOpacity(0.45),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: isConnected
-              ? const Color(0xFF00E676).withOpacity(0.3)
-              : const Color(0xFFFF5252).withOpacity(0.3),
+              ? AppColors.success.withOpacity(0.3)
+              : AppColors.error.withOpacity(0.3),
+          width: 0.5,
         ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Status dot
           AnimatedContainer(
             duration: const Duration(milliseconds: 300),
-            width: 8,
-            height: 8,
+            width: 6,
+            height: 6,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: isConnected
-                  ? const Color(0xFF00E676)
-                  : const Color(0xFFFF5252),
+              color: isConnected ? AppColors.success : AppColors.error,
               boxShadow: [
                 BoxShadow(
-                  color: (isConnected
-                          ? const Color(0xFF00E676)
-                          : const Color(0xFFFF5252))
-                      .withOpacity(0.5),
+                  color: (isConnected ? AppColors.success : AppColors.error)
+                      .withOpacity(0.4),
                   blurRadius: 4,
-                  spreadRadius: 1,
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 5),
           Icon(
             icon,
-            size: 14,
-            color: isConnected ? Colors.white : Colors.grey,
+            size: 12,
+            color: isConnected ? AppColors.textPrimary : AppColors.textMuted,
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 3),
           Text(
             label,
             style: TextStyle(
-              color: isConnected ? Colors.white : Colors.grey,
-              fontSize: 11,
+              color: isConnected ? AppColors.textPrimary : AppColors.textMuted,
+              fontSize: 10,
               fontWeight: FontWeight.w600,
             ),
           ),

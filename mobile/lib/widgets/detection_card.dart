@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../models/detection_record.dart';
+import '../utils/constants.dart';
 import '../utils/helpers.dart';
 
 class DetectionCard extends StatelessWidget {
@@ -18,92 +19,110 @@ class DetectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: const Color(0xFF1E1E1E),
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              // Thumbnail
-              _buildThumbnail(),
-              const SizedBox(width: 12),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Material(
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: AppColors.bgCardLight,
+                width: 0.5,
+              ),
+            ),
+            child: Row(
+              children: [
+                // Thumbnail
+                _buildThumbnail(),
+                const SizedBox(width: 12),
 
-              // Details
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        _buildTypeBadge(),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            DateFormat('MMM dd, HH:mm').format(
-                              detection.detectedAt,
+                // Details
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          _buildTypeBadge(),
+                          const Spacer(),
+                          Text(
+                            _formatTime(detection.detectedAt),
+                            style: const TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 11,
                             ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          // Confidence
+                          Icon(
+                            Icons.speed_rounded,
+                            size: 13,
+                            color: _getConfidenceColor(),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '${(detection.confidence * 100).toStringAsFixed(1)}%',
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.5),
+                              color: _getConfidenceColor(),
+                              fontWeight: FontWeight.w700,
                               fontSize: 12,
                             ),
                           ),
-                        ),
-                        if (onDelete != null)
-                          IconButton(
-                            icon: const Icon(
-                              Icons.delete_outline,
-                              size: 18,
-                              color: Colors.grey,
+                          const SizedBox(width: 12),
+                          // Coordinates
+                          const Icon(
+                            Icons.location_on_rounded,
+                            size: 12,
+                            color: AppColors.textMuted,
+                          ),
+                          const SizedBox(width: 3),
+                          Expanded(
+                            child: Text(
+                              '${formatLatitude(detection.latitude)}, ${formatLongitude(detection.longitude)}',
+                              style: const TextStyle(
+                                color: AppColors.textMuted,
+                                fontSize: 10,
+                                fontFamily: 'monospace',
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            onPressed: onDelete,
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
                           ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    // Confidence
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.speed,
-                          size: 14,
-                          color: _getConfidenceColor(),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          '${(detection.confidence * 100).toStringAsFixed(1)}%',
-                          style: TextStyle(
-                            color: _getConfidenceColor(),
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    // Coordinates
-                    Text(
-                      '${formatLatitude(detection.latitude)}, '
-                      '${formatLongitude(detection.longitude)}',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.4),
-                        fontSize: 11,
-                        fontFamily: 'monospace',
+                        ],
                       ),
-                    ),
+                    ],
+                  ),
+                ),
+
+                // Upload status + delete
+                const SizedBox(width: 8),
+                Column(
+                  children: [
+                    _buildUploadBadge(),
+                    if (onDelete != null) ...[
+                      const SizedBox(height: 8),
+                      GestureDetector(
+                        onTap: onDelete,
+                        child: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 16,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
-              ),
-
-              // Upload status
-              const SizedBox(width: 8),
-              _buildUploadStatus(),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -111,13 +130,12 @@ class DetectionCard extends StatelessWidget {
   }
 
   Widget _buildThumbnail() {
-    // Show actual photo if available
     if (detection.localImagePath != null) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: SizedBox(
-          width: 56,
-          height: 56,
+          width: 52,
+          height: 52,
           child: Image.file(
             File(detection.localImagePath!),
             fit: BoxFit.cover,
@@ -133,113 +151,113 @@ class DetectionCard extends StatelessWidget {
 
   Widget _buildFallbackIcon() {
     return Container(
-      width: 56,
-      height: 56,
+      width: 52,
+      height: 52,
       decoration: BoxDecoration(
-        color: const Color(0xFF0D1B2A),
+        color: _getDamageColor().withOpacity(0.1),
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: _getDamageColor().withOpacity(0.2),
+          width: 0.5,
+        ),
       ),
-      child: _getDamageIcon(),
+      child: Icon(
+        _getDamageIcon(),
+        color: _getDamageColor(),
+        size: 24,
+      ),
     );
-  }
-
-  Widget _getDamageIcon() {
-    IconData icon;
-    Color color;
-
-    switch (detection.damageType) {
-      case DamageType.lubang:
-        icon = Icons.warning_amber_rounded;
-        color = const Color(0xFFFF5252);
-        break;
-      case DamageType.retak_memanjang:
-        icon = Icons.linear_scale;
-        color = const Color(0xFFFF9800);
-        break;
-      case DamageType.retak_kulit_buaya:
-        icon = Icons.trending_down;
-        color = const Color(0xFF9C27B0);
-        break;
-      case DamageType.retak_blok:
-        icon = Icons.trending_up;
-        color = const Color(0xFF2196F3);
-        break;
-      case DamageType.retak_pinggir:
-        icon = Icons.compare_arrows;
-        color = const Color(0xFF00E676);
-        break;
-      case DamageType.pengelupasan_lapisan_permukaan:
-        icon = Icons.layers_clear;
-        color = const Color(0xFFE91E63);
-        break;
-    }
-
-    return Icon(icon, color: color, size: 28);
   }
 
   Widget _buildTypeBadge() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: _getDamageColor().withOpacity(0.2),
-        borderRadius: BorderRadius.circular(8),
+        color: _getDamageColor().withOpacity(0.15),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         detection.damageType.displayName,
         style: TextStyle(
           color: _getDamageColor(),
           fontSize: 11,
-          fontWeight: FontWeight.bold,
+          fontWeight: FontWeight.w600,
         ),
       ),
     );
   }
 
-  Widget _buildUploadStatus() {
+  Widget _buildUploadBadge() {
     IconData icon;
     Color color;
 
     switch (detection.status) {
       case DetectionStatus.uploaded:
-        icon = Icons.cloud_done;
-        color = const Color(0xFF00E676);
+        icon = Icons.cloud_done_rounded;
+        color = AppColors.success;
         break;
       case DetectionStatus.queued:
-        icon = Icons.cloud_queue;
-        color = const Color(0xFFFFEB3B);
+        icon = Icons.cloud_queue_rounded;
+        color = AppColors.warning;
         break;
       case DetectionStatus.failed:
-        icon = Icons.cloud_off;
-        color = const Color(0xFFFF5252);
+        icon = Icons.cloud_off_rounded;
+        color = AppColors.error;
         break;
       default:
-        icon = Icons.cloud_upload;
-        color = Colors.grey;
+        icon = Icons.cloud_upload_rounded;
+        color = AppColors.textMuted;
     }
 
-    return Icon(icon, color: color, size: 20);
+    return Icon(icon, color: color, size: 18);
+  }
+
+  String _formatTime(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
+    if (diff.inMinutes < 1) return 'Baru saja';
+    if (diff.inHours < 1) return '${diff.inMinutes}m lalu';
+    if (diff.inDays < 1) return DateFormat('HH:mm').format(date);
+    return DateFormat('dd MMM, HH:mm').format(date);
+  }
+
+  IconData _getDamageIcon() {
+    switch (detection.damageType) {
+      case DamageType.lubang:
+        return Icons.warning_rounded;
+      case DamageType.retak_memanjang:
+        return Icons.linear_scale_rounded;
+      case DamageType.retak_kulit_buaya:
+        return Icons.grid_on_rounded;
+      case DamageType.retak_blok:
+        return Icons.view_quilt_rounded;
+      case DamageType.retak_pinggir:
+        return Icons.swap_horiz_rounded;
+      case DamageType.pengelupasan_lapisan_permukaan:
+        return Icons.layers_clear_rounded;
+    }
   }
 
   Color _getDamageColor() {
     switch (detection.damageType) {
       case DamageType.lubang:
-        return const Color(0xFFFF5252);
+        return AppColors.damageLubang;
       case DamageType.retak_memanjang:
-        return const Color(0xFFFF9800);
+        return AppColors.damageRetakMemanjang;
       case DamageType.retak_kulit_buaya:
-        return const Color(0xFF9C27B0);
+        return AppColors.damageRetakKulitBuaya;
       case DamageType.retak_blok:
-        return const Color(0xFF2196F3);
+        return AppColors.damageRetakBlok;
       case DamageType.retak_pinggir:
-        return const Color(0xFF00E676);
+        return AppColors.damageRetakPinggir;
       case DamageType.pengelupasan_lapisan_permukaan:
-        return const Color(0xFFE91E63);
+        return AppColors.damagePengelupasan;
     }
   }
 
   Color _getConfidenceColor() {
-    if (detection.confidence > 0.8) return const Color(0xFFFF5252);
-    if (detection.confidence > 0.6) return const Color(0xFFFFEB3B);
-    return const Color(0xFF00E676);
+    if (detection.confidence > 0.8) return AppColors.error;
+    if (detection.confidence > 0.6) return AppColors.warning;
+    return AppColors.success;
   }
 }

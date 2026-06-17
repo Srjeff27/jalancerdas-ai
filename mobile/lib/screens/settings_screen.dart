@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
+import '../utils/constants.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -28,130 +29,157 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.bgDark,
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: const Text('Pengaturan'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.restore),
-            tooltip: 'Reset defaults',
-            onPressed: () {
-              _showResetDialog(context);
-            },
+            icon: const Icon(Icons.restore_rounded),
+            tooltip: 'Reset',
+            onPressed: () => _showResetDialog(context),
           ),
         ],
       ),
       body: Consumer<SettingsProvider>(
         builder: (context, settings, child) {
-          // Sync controller text if settings change externally
           if (_apiUrlController.text != settings.apiUrl) {
             _apiUrlController.text = settings.apiUrl;
           }
 
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
             children: [
-              // API Configuration
-              _buildSectionHeader('API Configuration'),
-              const SizedBox(height: 8),
-              _buildTextField(
-                label: 'API URL',
-                controller: _apiUrlController,
-                icon: Icons.link,
-                onChanged: (value) => settings.setApiUrl(value),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Detection Settings
-              _buildSectionHeader('Detection Settings'),
-              const SizedBox(height: 8),
-
-              // Confidence Threshold
-              _buildSliderSetting(
-                label: 'Confidence Threshold',
-                value: settings.confidenceThreshold,
-                min: 0.5,
-                max: 1.0,
-                divisions: 10,
-                icon: Icons.speed,
-                displayValue:
-                    '${(settings.confidenceThreshold * 100).toStringAsFixed(0)}%',
-                onChanged: (value) => settings.setConfidenceThreshold(value),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Mock Mode
-              _buildSwitchSetting(
-                title: 'Mock Detection Mode',
-                subtitle: 'Use simulated detections instead of real model',
-                value: settings.mockDetectionMode,
-                icon: Icons.science,
-                onChanged: (_) => settings.toggleMockDetectionMode(),
-              ),
-
-              const SizedBox(height: 24),
-
-              // Upload Settings
-              _buildSectionHeader('Upload Settings'),
-              const SizedBox(height: 8),
-
-              _buildSwitchSetting(
-                title: 'Auto Upload',
-                subtitle: 'Automatically upload detections to server',
-                value: settings.autoUpload,
-                icon: Icons.cloud_upload,
-                onChanged: (_) => settings.toggleAutoUpload(),
-              ),
-
-              _buildSwitchSetting(
-                title: 'Offline Mode',
-                subtitle: 'Disable all network operations',
-                value: settings.offlineMode,
-                icon: Icons.airplanemode_active,
-                onChanged: (_) => settings.toggleOfflineMode(),
-              ),
-
-              const SizedBox(height: 24),
-
-              // About
-              _buildSectionHeader('About'),
-              const SizedBox(height: 8),
-              Card(
-                color: const Color(0xFF1E1E1E),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'JalanCerdas AI',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF2196F3),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Version 1.0.0',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'AI-powered pothole detection for road condition monitoring. '
-                        'Uses camera and GPS to detect and report road damage.',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
-                          fontSize: 13,
-                          height: 1.4,
-                        ),
-                      ),
-                    ],
+              // ─── API Section ───
+              _buildSection(
+                title: 'API',
+                icon: Icons.link_rounded,
+                children: [
+                  _buildTextField(
+                    label: 'API URL',
+                    controller: _apiUrlController,
+                    icon: Icons.language_rounded,
+                    onChanged: (value) => settings.setApiUrl(value),
                   ),
-                ),
+                ],
+              ),
+
+              const SizedBox(height: 20),
+
+              // ─── Deteksi Section ───
+              _buildSection(
+                title: 'Deteksi',
+                icon: Icons.radar_rounded,
+                children: [
+                  _buildSliderSetting(
+                    label: 'Confidence Threshold',
+                    value: settings.confidenceThreshold,
+                    min: 0.5,
+                    max: 1.0,
+                    divisions: 10,
+                    displayValue:
+                        '${(settings.confidenceThreshold * 100).toStringAsFixed(0)}%',
+                    onChanged: (value) => settings.setConfidenceThreshold(value),
+                  ),
+                  const SizedBox(height: 4),
+                  _buildSwitchSetting(
+                    title: 'Mock Mode',
+                    subtitle: 'Gunakan deteksi simulasi',
+                    value: settings.mockDetectionMode,
+                    icon: Icons.science_rounded,
+                    onChanged: (_) => settings.toggleMockDetectionMode(),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 20),
+
+              // ─── Upload Section ───
+              _buildSection(
+                title: 'Upload',
+                icon: Icons.cloud_upload_rounded,
+                children: [
+                  _buildSwitchSetting(
+                    title: 'Auto Upload',
+                    subtitle: 'Otomatis unggah ke server',
+                    value: settings.autoUpload,
+                    icon: Icons.sync_rounded,
+                    onChanged: (_) => settings.toggleAutoUpload(),
+                  ),
+                  _buildSwitchSetting(
+                    title: 'Offline Mode',
+                    subtitle: 'Nonaktifkan semua jaringan',
+                    value: settings.offlineMode,
+                    icon: Icons.airplanemode_active_rounded,
+                    onChanged: (_) => settings.toggleOfflineMode(),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 20),
+
+              // ─── About Section ───
+              _buildSection(
+                title: 'Tentang',
+                icon: Icons.info_outline_rounded,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [AppColors.primary, AppColors.primaryLight],
+                                ),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(
+                                Icons.construction_rounded,
+                                color: Colors.white,
+                                size: 22,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            const Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  AppConstants.appName,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                Text(
+                                  'v${AppConstants.appVersion}',
+                                  style: TextStyle(
+                                    color: AppColors.textMuted,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Sistem deteksi kerusakan jalan berbasis AI menggunakan kamera dan GPS untuk memantau kondisi infrastruktur jalan.',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 13,
+                            height: 1.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ],
           );
@@ -160,15 +188,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildSectionHeader(String title) {
-    return Text(
-      title.toUpperCase(),
-      style: TextStyle(
-        color: const Color(0xFF2196F3).withOpacity(0.8),
-        fontSize: 12,
-        fontWeight: FontWeight.bold,
-        letterSpacing: 1.5,
-      ),
+  Widget _buildSection({
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 8),
+          child: Row(
+            children: [
+              Icon(icon, size: 16, color: AppColors.primary),
+              const SizedBox(width: 6),
+              Text(
+                title.toUpperCase(),
+                style: const TextStyle(
+                  color: AppColors.textMuted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            color: AppColors.bgCard,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.bgCardLight, width: 0.5),
+          ),
+          child: Column(
+            children: children,
+          ),
+        ),
+      ],
     );
   }
 
@@ -178,22 +234,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required IconData icon,
     required Function(String) onChanged,
   }) {
-    return Card(
-      color: const Color(0xFF1E1E1E),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        child: TextField(
-          controller: controller,
-          onChanged: onChanged,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            labelText: label,
-            labelStyle: TextStyle(color: Colors.white.withOpacity(0.6)),
-            prefixIcon: Icon(icon, color: const Color(0xFF2196F3)),
-            border: InputBorder.none,
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: const Color(0xFF2196F3)),
-            ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        style: const TextStyle(color: AppColors.textPrimary, fontSize: 14),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+          prefixIcon: Icon(icon, color: AppColors.primary, size: 20),
+          border: InputBorder.none,
+          focusedBorder: UnderlineInputBorder(
+            borderSide: BorderSide(color: AppColors.primary.withOpacity(0.5)),
           ),
         ),
       ),
@@ -206,65 +259,59 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required double min,
     required double max,
     required int divisions,
-    required IconData icon,
     required String displayValue,
     required Function(double) onChanged,
   }) {
-    return Card(
-      color: const Color(0xFF1E1E1E),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(icon, color: const Color(0xFF2196F3), size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  label,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 14,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  displayValue,
                   style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
                   ),
                 ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF2196F3).withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    displayValue,
-                    style: const TextStyle(
-                      color: Color(0xFF2196F3),
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SliderTheme(
-              data: SliderThemeData(
-                activeTrackColor: const Color(0xFF2196F3),
-                inactiveTrackColor: Colors.grey.withOpacity(0.3),
-                thumbColor: const Color(0xFF2196F3),
-                overlayColor: const Color(0xFF2196F3).withOpacity(0.2),
               ),
-              child: Slider(
-                value: value,
-                min: min,
-                max: max,
-                divisions: divisions,
-                onChanged: onChanged,
-              ),
+            ],
+          ),
+          SliderTheme(
+            data: SliderThemeData(
+              activeTrackColor: AppColors.primary,
+              inactiveTrackColor: AppColors.bgCardLight,
+              thumbColor: AppColors.primary,
+              overlayColor: AppColors.primary.withOpacity(0.1),
+              trackHeight: 3,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
             ),
-          ],
-        ),
+            child: Slider(
+              value: value,
+              min: min,
+              max: max,
+              divisions: divisions,
+              onChanged: onChanged,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -276,31 +323,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required IconData icon,
     required Function(bool) onChanged,
   }) {
-    return Card(
-      color: const Color(0xFF1E1E1E),
-      child: SwitchListTile(
-        secondary: Icon(
-          icon,
-          color: value ? const Color(0xFF2196F3) : Colors.grey,
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 14,
-          ),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.5),
-            fontSize: 12,
-          ),
-        ),
-        value: value,
-        activeColor: const Color(0xFF2196F3),
-        onChanged: onChanged,
+    return SwitchListTile(
+      secondary: Icon(
+        icon,
+        color: value ? AppColors.primary : AppColors.textMuted,
+        size: 22,
       ),
+      title: Text(
+        title,
+        style: const TextStyle(
+          color: AppColors.textPrimary,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: const TextStyle(
+          color: AppColors.textMuted,
+          fontSize: 12,
+        ),
+      ),
+      value: value,
+      activeColor: AppColors.primary,
+      onChanged: onChanged,
     );
   }
 
@@ -308,22 +354,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Reset Settings'),
-        content: const Text('Reset all settings to default values?'),
+        backgroundColor: AppColors.bgCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Reset Pengaturan'),
+        content: const Text(
+          'Kembalikan semua pengaturan ke default?',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('Batal'),
           ),
           TextButton(
             onPressed: () {
               context.read<SettingsProvider>().resetToDefaults();
               Navigator.pop(context);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Settings reset to defaults'),
-                  backgroundColor: Color(0xFF2196F3),
+                SnackBar(
+                  content: const Text('Pengaturan direset'),
+                  backgroundColor: AppColors.accent,
+                  behavior: SnackBarBehavior.floating,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
               );
             },

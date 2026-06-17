@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
 import '../providers/detection_provider.dart';
+import '../utils/constants.dart';
 import '../widgets/status_indicator.dart';
 import '../widgets/detection_overlay.dart';
 import '../utils/helpers.dart';
+import 'history_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,10 +20,16 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
 
+  // Screens for IndexedStack — state preserved across tab switches
+  late final List<Widget> _screens = [
+    _CameraTab(key: const ValueKey('camera')),
+    const HistoryScreen(key: ValueKey('history')),
+    const SettingsScreen(key: ValueKey('settings')),
+  ];
+
   @override
   void initState() {
     super.initState();
-    // Start detection when home screen loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<DetectionProvider>();
       if (!provider.isDetecting) {
@@ -32,53 +41,101 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _currentIndex == 0 ? _buildCameraView() : const SizedBox(),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A2E),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.3),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
-          ],
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _screens,
+      ),
+      bottomNavigationBar: _buildBottomNav(),
+    );
+  }
+
+  Widget _buildBottomNav() {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppColors.navBg,
+        border: Border(
+          top: BorderSide(color: AppColors.bgCardLight, width: 0.5),
         ),
-        child: NavigationBar(
-          selectedIndex: _currentIndex,
-          onDestinationSelected: (index) {
-            setState(() => _currentIndex = index);
-            if (index == 1) {
-              Navigator.pushNamed(context, '/history');
-            } else if (index == 2) {
-              Navigator.pushNamed(context, '/settings');
-            }
-          },
-          backgroundColor: const Color(0xFF1A1A2E),
-          indicatorColor: const Color(0xFF2196F3).withOpacity(0.3),
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.home_outlined),
-              selectedIcon: Icon(Icons.home, color: Color(0xFF2196F3)),
-              label: 'Home',
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildNavItem(
+                icon: Icons.camera_alt_rounded,
+                label: 'Kamera',
+                index: 0,
+              ),
+              _buildNavItem(
+                icon: Icons.history_rounded,
+                label: 'Riwayat',
+                index: 1,
+              ),
+              _buildNavItem(
+                icon: Icons.settings_rounded,
+                label: 'Pengaturan',
+                index: 2,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem({
+    required IconData icon,
+    required String label,
+    required int index,
+  }) {
+    final isActive = _currentIndex == index;
+    return GestureDetector(
+      onTap: () => setState(() => _currentIndex = index),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        decoration: BoxDecoration(
+          color: isActive
+              ? AppColors.primary.withOpacity(0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 22,
+              color: isActive ? AppColors.primary : AppColors.navInactive,
             ),
-            NavigationDestination(
-              icon: Icon(Icons.history_outlined),
-              selectedIcon: Icon(Icons.history, color: Color(0xFF2196F3)),
-              label: 'History',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.settings_outlined),
-              selectedIcon: Icon(Icons.settings, color: Color(0xFF2196F3)),
-              label: 'Settings',
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                color: isActive ? AppColors.primary : AppColors.navInactive,
+              ),
             ),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildCameraView() {
+// ──────────────────────────────────────────────────────────────────
+// Camera Tab — lives inside IndexedStack
+// ──────────────────────────────────────────────────────────────────
+
+class _CameraTab extends StatelessWidget {
+  const _CameraTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
     return Consumer<DetectionProvider>(
       builder: (context, provider, child) {
         return Stack(
@@ -87,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // Camera preview
             _buildCameraPreview(provider),
 
-            // Detection overlay — use persisted detections so boxes stay visible
+            // Detection overlay — persistent boxes
             if (provider.isDetecting)
               DetectionOverlay(
                 detections: provider.lastPersistedDetections,
@@ -95,19 +152,19 @@ class _HomeScreenState extends State<HomeScreen> {
                 imageHeight: provider.cameraController?.value.previewSize?.width?.toInt() ?? 480,
               ),
 
-            // Last detection photo preview (annotated with boxes)
+            // Detection preview thumbnail (annotated photo)
             if (provider.lastDetectedImagePath != null)
               Positioned(
                 top: MediaQuery.of(context).padding.top + 60,
                 right: 16,
-                child: _buildDetectionPreview(),
+                child: _buildDetectionPreview(context, provider),
               ),
 
             // Top status bar
             Positioned(
               top: MediaQuery.of(context).padding.top + 8,
-              left: 16,
-              right: 16,
+              left: 12,
+              right: 12,
               child: _buildTopBar(provider),
             ),
 
@@ -116,30 +173,38 @@ class _HomeScreenState extends State<HomeScreen> {
               bottom: 0,
               left: 0,
               right: 0,
-              child: _buildControlPanel(provider),
+              child: _buildControlPanel(context, provider),
             ),
 
-            // Mock mode indicator
+            // Mock mode badge
             if (provider.mockMode)
               Positioned(
                 top: MediaQuery.of(context).padding.top + 60,
                 left: 16,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
+                    horizontal: 10,
+                    vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.8),
-                    borderRadius: BorderRadius.circular(16),
+                    color: AppColors.warning.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text(
-                    '🔧 MOCK MODE',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.science_rounded, size: 12, color: Colors.black),
+                      SizedBox(width: 4),
+                      Text(
+                        'MOCK',
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -149,17 +214,17 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDetectionPreview() {
-    final provider = context.read<DetectionProvider>();
+  Widget _buildDetectionPreview(BuildContext context, DetectionProvider provider) {
     final imagePath = provider.lastDetectedImagePath;
     if (imagePath == null) return const SizedBox.shrink();
 
     return GestureDetector(
       onTap: () {
-        // Show full screen preview
         showDialog(
           context: context,
           builder: (context) => Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.all(16),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
               child: Image.file(
@@ -170,24 +235,26 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
-      child: Container(
-        width: 100,
-        height: 130,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        width: 90,
+        height: 120,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: const Color(0xFFFF5252),
-            width: 2,
+            color: AppColors.error.withOpacity(0.6),
+            width: 1.5,
           ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.5),
-              blurRadius: 8,
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(8.5),
           child: Image.file(
             File(imagePath),
             fit: BoxFit.cover,
@@ -200,25 +267,25 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildCameraPreview(DetectionProvider provider) {
     if (!provider.hasCamera || provider.cameraController == null) {
       return Container(
-        color: const Color(0xFF0D1B2A),
+        color: AppColors.bgDark,
         child: const Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                Icons.camera_alt_outlined,
-                size: 64,
-                color: Colors.grey,
-              ),
+              Icon(Icons.videocam_off_rounded, size: 56, color: AppColors.textMuted),
               SizedBox(height: 16),
               Text(
-                'Camera Preview',
-                style: TextStyle(color: Colors.grey, fontSize: 18),
+                'Kamera Tidak Tersedia',
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-              SizedBox(height: 8),
+              SizedBox(height: 6),
               Text(
-                'Camera unavailable in this environment',
-                style: TextStyle(color: Colors.grey, fontSize: 12),
+                'Pastikan izin kamera telah diberikan',
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12),
               ),
             ],
           ),
@@ -239,10 +306,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               )
             : Container(
-                color: const Color(0xFF0D1B2A),
+                color: AppColors.bgDark,
                 child: const Center(
                   child: CircularProgressIndicator(
-                    color: Color(0xFF2196F3),
+                    color: AppColors.primary,
+                    strokeWidth: 2,
                   ),
                 ),
               ),
@@ -252,116 +320,121 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildTopBar(DetectionProvider provider) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        // GPS Status
         StatusIndicator(
           label: 'GPS',
           isConnected: provider.hasGps,
-          icon: Icons.location_on,
+          icon: Icons.location_on_rounded,
         ),
-
-        // Detection count badge
+        const Spacer(),
+        // Detection count
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           decoration: BoxDecoration(
-            color: Colors.black.withOpacity(0.6),
-            borderRadius: BorderRadius.circular(16),
+            color: Colors.black.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: provider.detectionCount > 0
+                  ? AppColors.error.withOpacity(0.4)
+                  : AppColors.bgCardLight,
+              width: 0.5,
+            ),
           ),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               const Icon(
-                Icons.warning_amber_rounded,
-                color: Color(0xFFFF5252),
-                size: 16,
+                Icons.warning_rounded,
+                color: AppColors.error,
+                size: 14,
               ),
-              const SizedBox(width: 6),
+              const SizedBox(width: 5),
               Text(
                 '${provider.detectionCount}',
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
                 ),
               ),
             ],
           ),
         ),
-
-        // Internet Status
+        const Spacer(),
         StatusIndicator(
           label: 'NET',
           isConnected: provider.isConnected,
-          icon: Icons.wifi,
+          icon: Icons.wifi_rounded,
         ),
       ],
     );
   }
 
-  Widget _buildControlPanel(DetectionProvider provider) {
+  Widget _buildControlPanel(BuildContext context, DetectionProvider provider) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
             Colors.transparent,
-            Colors.black.withOpacity(0.8),
+            Colors.black.withOpacity(0.85),
           ],
         ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Confidence and location info
+          // Info bar
           if (provider.lastDetection != null)
             Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.5),
-                borderRadius: BorderRadius.circular(12),
+                color: Colors.black.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: AppColors.bgCardLight.withOpacity(0.3),
+                  width: 0.5,
+                ),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   _buildInfoChip(
                     'Confidence',
                     '${(provider.currentConfidence * 100).toStringAsFixed(1)}%',
-                    Icons.speed,
+                    Icons.speed_rounded,
                     provider.currentConfidence > 0.7
-                        ? const Color(0xFFFF5252)
-                        : const Color(0xFFFFEB3B),
+                        ? AppColors.error
+                        : AppColors.warning,
                   ),
                   _buildInfoChip(
                     'Lat',
                     formatLatitude(provider.lastDetection!.latitude),
-                    Icons.location_on,
-                    const Color(0xFF00E676),
+                    Icons.my_location_rounded,
+                    AppColors.accent,
                   ),
                   _buildInfoChip(
                     'Lng',
                     formatLongitude(provider.lastDetection!.longitude),
-                    Icons.location_on,
-                    const Color(0xFF00E676),
+                    Icons.explore_rounded,
+                    AppColors.accent,
                   ),
                 ],
               ),
             ),
 
-          // Control buttons
+          // Controls
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              // Switch camera
-              _buildCircleButton(
-                icon: Icons.cameraswitch,
-                color: Colors.white.withOpacity(0.2),
+              _buildIconButton(
+                icon: Icons.cameraswitch_rounded,
                 onTap: () => provider.switchCamera(),
               ),
-
-              // Start/Stop detection
+              // Main play/stop button
               GestureDetector(
                 onTap: () {
                   if (provider.isDetecting) {
@@ -371,108 +444,112 @@ class _HomeScreenState extends State<HomeScreen> {
                   }
                 },
                 child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  width: 80,
-                  height: 80,
+                  duration: const Duration(milliseconds: 250),
+                  width: 72,
+                  height: 72,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: provider.isDetecting
-                        ? const Color(0xFFFF5252)
-                        : const Color(0xFF2196F3),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: provider.isDetecting
+                          ? [AppColors.error, const Color(0xFFDC2626)]
+                          : [AppColors.primary, AppColors.primaryDark],
+                    ),
                     boxShadow: [
                       BoxShadow(
                         color: (provider.isDetecting
-                                ? const Color(0xFFFF5252)
-                                : const Color(0xFF2196F3))
-                            .withOpacity(0.5),
+                                ? AppColors.error
+                                : AppColors.primary)
+                            .withOpacity(0.4),
                         blurRadius: 20,
                         spreadRadius: 2,
                       ),
                     ],
                   ),
                   child: Icon(
-                    provider.isDetecting ? Icons.stop : Icons.play_arrow,
+                    provider.isDetecting ? Icons.stop_rounded : Icons.play_arrow_rounded,
                     color: Colors.white,
-                    size: 40,
+                    size: 36,
                   ),
                 ),
               ),
-
-              // Manual capture
-              _buildCircleButton(
-                icon: Icons.camera,
-                color: Colors.white.withOpacity(0.2),
-                onTap: () => _manualCapture(provider),
+              _buildIconButton(
+                icon: Icons.camera_alt_rounded,
+                onTap: () => _manualCapture(context, provider),
               ),
             ],
           ),
-
-          const SizedBox(height: 8),
+          const SizedBox(height: 4),
         ],
       ),
     );
   }
 
-  Future<void> _manualCapture(DetectionProvider provider) async {
+  Future<void> _manualCapture(BuildContext context, DetectionProvider provider) async {
     final path = await provider.takePicture();
-    if (path != null && mounted) {
-      setState(() {
-        // Photo saved via provider
-      });
+    if (path != null && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Photo saved: $path'),
-          backgroundColor: const Color(0xFF2196F3),
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle, color: Colors.white, size: 16),
+              const SizedBox(width: 8),
+              const Text('Foto tersimpan'),
+            ],
+          ),
+          backgroundColor: AppColors.accent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          duration: const Duration(seconds: 2),
         ),
       );
     }
   }
 
-  Widget _buildInfoChip(
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
+  Widget _buildInfoChip(String label, String value, IconData icon, Color color) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, color: color, size: 14),
-        const SizedBox(height: 4),
+        Icon(icon, color: color, size: 13),
+        const SizedBox(height: 3),
         Text(
           label,
-          style: TextStyle(
-            color: Colors.white.withOpacity(0.6),
-            fontSize: 10,
+          style: const TextStyle(
+            color: AppColors.textMuted,
+            fontSize: 9,
           ),
         ),
         Text(
           value,
           style: TextStyle(
             color: color,
-            fontSize: 12,
-            fontWeight: FontWeight.bold,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
           ),
         ),
       ],
     );
   }
 
-  Widget _buildCircleButton({
+  Widget _buildIconButton({
     required IconData icon,
-    required Color color,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 50,
-        height: 50,
+        width: 46,
+        height: 46,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          color: color,
+          color: AppColors.bgCard.withOpacity(0.7),
+          border: Border.all(
+            color: AppColors.bgCardLight,
+            width: 0.5,
+          ),
         ),
-        child: Icon(icon, color: Colors.white, size: 24),
+        child: Icon(icon, color: AppColors.textPrimary, size: 22),
       ),
     );
   }

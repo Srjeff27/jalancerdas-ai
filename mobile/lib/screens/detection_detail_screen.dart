@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../providers/detection_provider.dart';
 import '../models/detection_record.dart';
+import '../utils/constants.dart';
 import '../utils/helpers.dart';
 
 class DetectionDetailScreen extends StatelessWidget {
@@ -19,26 +20,25 @@ class DetectionDetailScreen extends StatelessWidget {
 
         if (detection == null) {
           return Scaffold(
-            appBar: AppBar(title: const Text('Detection Detail')),
+            appBar: AppBar(title: const Text('Detail')),
             body: const Center(
               child: Text(
-                'Detection not found',
-                style: TextStyle(color: Colors.grey),
+                'Data tidak ditemukan',
+                style: TextStyle(color: AppColors.textMuted),
               ),
             ),
           );
         }
 
         return Scaffold(
+          backgroundColor: AppColors.bgDark,
           appBar: AppBar(
-            title: const Text('Detection Detail'),
+            title: const Text('Detail Deteksi'),
             actions: [
               IconButton(
-                icon: const Icon(Icons.delete_outline),
-                tooltip: 'Delete',
-                onPressed: () {
-                  _showDeleteDialog(context, provider, detection);
-                },
+                icon: const Icon(Icons.delete_outline_rounded),
+                tooltip: 'Hapus',
+                onPressed: () => _showDeleteDialog(context, provider, detection),
               ),
             ],
           ),
@@ -46,16 +46,16 @@ class DetectionDetailScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Image or placeholder
+                // Image
                 _buildImageSection(detection),
 
-                // Details
+                // Content
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Damage type & confidence
+                      // Type + confidence row
                       Row(
                         children: [
                           _buildTypeChip(detection),
@@ -64,32 +64,115 @@ class DetectionDetailScreen extends StatelessWidget {
                         ],
                       ),
 
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 20),
 
-                      // Status
-                      _buildStatusSection(detection),
-
-                      const SizedBox(height: 16),
-
-                      // Location info
-                      _buildLocationSection(detection),
-
-                      const SizedBox(height: 16),
-
-                      // Timestamp
-                      _buildInfoRow(
-                        'Detected At',
-                        DateFormat('MMM dd, yyyy HH:mm:ss')
-                            .format(detection.detectedAt),
-                        Icons.access_time,
+                      // Info cards
+                      _buildInfoCard(
+                        icon: Icons.access_time_rounded,
+                        title: 'Waktu',
+                        child: Text(
+                          DateFormat('dd MMMM yyyy, HH:mm:ss')
+                              .format(detection.detectedAt),
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 14,
+                          ),
+                        ),
                       ),
 
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 12),
 
-                      // Dimensions if available
+                      _buildInfoCard(
+                        icon: Icons.location_on_rounded,
+                        title: 'Lokasi',
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Latitude',
+                                    style: TextStyle(
+                                      color: AppColors.textMuted,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                  Text(
+                                    formatLatitude(detection.latitude),
+                                    style: const TextStyle(
+                                      color: AppColors.textPrimary,
+                                      fontSize: 13,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              width: 1,
+                              height: 30,
+                              color: AppColors.bgCardLight,
+                            ),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(left: 12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Longitude',
+                                      style: TextStyle(
+                                        color: AppColors.textMuted,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                    Text(
+                                      formatLongitude(detection.longitude),
+                                      style: const TextStyle(
+                                        color: AppColors.textPrimary,
+                                        fontSize: 13,
+                                        fontFamily: 'monospace',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      _buildInfoCard(
+                        icon: Icons.cloud_upload_rounded,
+                        title: 'Status',
+                        child: _buildStatusRow(detection),
+                      ),
+
+                      // Dimensions
                       if (detection.widthMeters != null ||
                           detection.depthMeters != null) ...[
-                        _buildDimensionsSection(detection),
+                        const SizedBox(height: 12),
+                        _buildInfoCard(
+                          icon: Icons.straighten_rounded,
+                          title: 'Dimensi',
+                          child: Column(
+                            children: [
+                              if (detection.widthMeters != null)
+                                _buildDimensionRow(
+                                  'Lebar',
+                                  '${detection.widthMeters!.toStringAsFixed(2)} m',
+                                ),
+                              if (detection.depthMeters != null)
+                                _buildDimensionRow(
+                                  'Kedalaman',
+                                  '${detection.depthMeters!.toStringAsFixed(2)} m',
+                                ),
+                            ],
+                          ),
+                        ),
                       ],
                     ],
                   ),
@@ -104,9 +187,9 @@ class DetectionDetailScreen extends StatelessWidget {
 
   Widget _buildImageSection(DetectionRecord detection) {
     return Container(
-      height: 300,
+      height: 260,
       width: double.infinity,
-      color: const Color(0xFF0D1B2A),
+      color: AppColors.bgCard,
       child: detection.localImagePath != null
           ? Image.file(
               File(detection.localImagePath!),
@@ -132,15 +215,11 @@ class DetectionDetailScreen extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.broken_image,
-            size: 64,
-            color: Colors.grey,
-          ),
+          Icon(Icons.image_outlined, size: 48, color: AppColors.textMuted),
           SizedBox(height: 8),
           Text(
-            'No image available',
-            style: TextStyle(color: Colors.grey),
+            'Tidak ada gambar',
+            style: TextStyle(color: AppColors.textMuted, fontSize: 13),
           ),
         ],
       ),
@@ -148,41 +227,20 @@ class DetectionDetailScreen extends StatelessWidget {
   }
 
   Widget _buildTypeChip(DetectionRecord detection) {
-    Color chipColor;
-    switch (detection.damageType) {
-      case DamageType.lubang:
-        chipColor = const Color(0xFFFF5252);
-        break;
-      case DamageType.retak_memanjang:
-        chipColor = const Color(0xFFFF9800);
-        break;
-      case DamageType.retak_kulit_buaya:
-        chipColor = const Color(0xFF9C27B0);
-        break;
-      case DamageType.retak_blok:
-        chipColor = const Color(0xFF2196F3);
-        break;
-      case DamageType.retak_pinggir:
-        chipColor = const Color(0xFF00E676);
-        break;
-      case DamageType.pengelupasan_lapisan_permukaan:
-        chipColor = const Color(0xFFE91E63);
-        break;
-    }
-
+    final color = _getDamageColor(detection.damageType);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: chipColor.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: chipColor),
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3), width: 0.5),
       ),
       child: Text(
         detection.damageType.displayName,
         style: TextStyle(
-          color: chipColor,
-          fontWeight: FontWeight.bold,
-          fontSize: 14,
+          color: color,
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
         ),
       ),
     );
@@ -190,208 +248,123 @@ class DetectionDetailScreen extends StatelessWidget {
 
   Widget _buildConfidenceBadge(DetectionRecord detection) {
     final color = detection.confidence > 0.8
-        ? const Color(0xFFFF5252)
+        ? AppColors.error
         : detection.confidence > 0.6
-            ? const Color(0xFFFFEB3B)
-            : const Color(0xFF00E676);
+            ? AppColors.warning
+            : AppColors.success;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(16),
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
         '${(detection.confidence * 100).toStringAsFixed(1)}%',
         style: TextStyle(
           color: color,
-          fontWeight: FontWeight.bold,
-          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          fontSize: 14,
         ),
       ),
     );
   }
 
-  Widget _buildStatusSection(DetectionRecord detection) {
+  Widget _buildInfoCard({
+    required IconData icon,
+    required String title,
+    required Widget child,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.bgCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.bgCardLight, width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: AppColors.primary),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusRow(DetectionRecord detection) {
     IconData icon;
     Color color;
     String text;
 
     switch (detection.status) {
       case DetectionStatus.detected:
-        icon = Icons.search;
-        color = Colors.grey;
-        text = 'Detected';
+        icon = Icons.search_rounded;
+        color = AppColors.textSecondary;
+        text = 'Terdeteksi';
         break;
       case DetectionStatus.uploaded:
-        icon = Icons.cloud_done;
-        color = const Color(0xFF00E676);
-        text = 'Uploaded';
+        icon = Icons.cloud_done_rounded;
+        color = AppColors.success;
+        text = 'Terkirim';
         break;
       case DetectionStatus.queued:
-        icon = Icons.cloud_queue;
-        color = const Color(0xFFFFEB3B);
-        text = 'Queued for upload';
+        icon = Icons.cloud_queue_rounded;
+        color = AppColors.warning;
+        text = 'Dalam antrian';
         break;
       case DetectionStatus.failed:
-        icon = Icons.cloud_off;
-        color = const Color(0xFFFF5252);
-        text = 'Upload failed';
+        icon = Icons.cloud_off_rounded;
+        color = AppColors.error;
+        text = 'Gagal mengirim';
         break;
     }
 
-    return _buildInfoRow('Status', text, icon, valueColor: color);
-  }
-
-  Widget _buildLocationSection(DetectionRecord detection) {
-    return Card(
-      color: const Color(0xFF1E1E1E),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(
-                  Icons.location_on,
-                  color: Color(0xFF00E676),
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                const Text(
-                  'Location',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Latitude',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
-                          fontSize: 12,
-                        ),
-                      ),
-                      Text(
-                        formatLatitude(detection.latitude),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Longitude',
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.5),
-                          fontSize: 12,
-                        ),
-                      ),
-                      Text(
-                        formatLongitude(detection.longitude),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
+    return Row(
+      children: [
+        Icon(icon, color: color, size: 18),
+        const SizedBox(width: 8),
+        Text(
+          text,
+          style: TextStyle(
+            color: color,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
         ),
-      ),
+      ],
     );
   }
 
-  Widget _buildDimensionsSection(DetectionRecord detection) {
-    return Card(
-      color: const Color(0xFF1E1E1E),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(
-                  Icons.straighten,
-                  color: Color(0xFF2196F3),
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                const Text(
-                  'Dimensions',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (detection.widthMeters != null)
-              _buildInfoRow(
-                'Width',
-                '${detection.widthMeters!.toStringAsFixed(2)}m',
-                Icons.arrow_forward,
-              ),
-            if (detection.depthMeters != null)
-              _buildInfoRow(
-                'Depth',
-                '${detection.depthMeters!.toStringAsFixed(2)}m',
-                Icons.arrow_downward,
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value, IconData icon,
-      {Color? valueColor}) {
+  Widget _buildDimensionRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
-          Icon(icon, color: const Color(0xFF2196F3), size: 16),
-          const SizedBox(width: 8),
           Text(
             '$label: ',
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.6),
-              fontSize: 14,
-            ),
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                color: valueColor ?? Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
+          Text(
+            value,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
@@ -399,18 +372,39 @@ class DetectionDetailScreen extends StatelessWidget {
     );
   }
 
+  Color _getDamageColor(DamageType type) {
+    switch (type) {
+      case DamageType.lubang:
+        return AppColors.damageLubang;
+      case DamageType.retak_memanjang:
+        return AppColors.damageRetakMemanjang;
+      case DamageType.retak_kulit_buaya:
+        return AppColors.damageRetakKulitBuaya;
+      case DamageType.retak_blok:
+        return AppColors.damageRetakBlok;
+      case DamageType.retak_pinggir:
+        return AppColors.damageRetakPinggir;
+      case DamageType.pengelupasan_lapisan_permukaan:
+        return AppColors.damagePengelupasan;
+    }
+  }
+
   void _showDeleteDialog(
       BuildContext context, DetectionProvider provider, DetectionRecord detection) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Delete Detection'),
-        content: const Text('Are you sure you want to delete this detection?'),
+        backgroundColor: AppColors.bgCard,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Hapus Deteksi'),
+        content: const Text(
+          'Yakin ingin menghapus data ini?',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: const Text('Batal'),
           ),
           TextButton(
             onPressed: () {
@@ -419,8 +413,8 @@ class DetectionDetailScreen extends StatelessWidget {
               Navigator.pop(context);
             },
             child: const Text(
-              'Delete',
-              style: TextStyle(color: Color(0xFFFF5252)),
+              'Hapus',
+              style: TextStyle(color: AppColors.error),
             ),
           ),
         ],
