@@ -162,8 +162,16 @@ class DetectionService {
   // YOLO model config — tunable
   static const int inputSize = 640;
   static const int numClasses = 6;
-  static const double confidenceThreshold = 0.35; // Lower = more detections
+  static const double confidenceThreshold = 0.55; // Higher = fewer false positives
   static const double nmsIouThreshold = 0.5;
+
+  // Spatial filtering — only detect in road area (bottom 65% of frame)
+  // Top 35% is usually sky/buildings/people
+  static const double _roadAreaTopRatio = 0.35;
+  // Max bounding box size ratio — skip if larger than 40% of frame (probably not damage)
+  static const double _maxBoxSizeRatio = 0.40;
+  // Min bounding box size — skip tiny detections (noise)
+  static const double _minBoxSizeRatio = 0.02;
 
   // Persistent detections — hold for N frames
   static const int _persistFrames = 8;
@@ -370,6 +378,24 @@ class DetectionService {
       }
 
       if (bestClassScore > threshold) {
+        // ─── FILTER 1: Spatial — only bottom 65% of frame (road area) ───
+        // Top 35% is usually sky, buildings, people
+        final yNormalized = cy / inputSize;
+        if (yNormalized < _roadAreaTopRatio) {
+          continue; // Skip — above road area
+        }
+
+        // ─── FILTER 2: Size — skip too large (not damage) ───
+        final sizeRatio = (w * h) / (inputSize * inputSize);
+        if (sizeRatio > _maxBoxSizeRatio * _maxBoxSizeRatio) {
+          continue; // Skip — bounding box too large
+        }
+
+        // ─── FILTER 3: Size — skip too tiny (noise) ───
+        if (w < inputSize * _minBoxSizeRatio || h < inputSize * _minBoxSizeRatio) {
+          continue; // Skip — too small
+        }
+
         candidates.add(_DetectionCandidate(
           cx: cx,
           cy: cy,

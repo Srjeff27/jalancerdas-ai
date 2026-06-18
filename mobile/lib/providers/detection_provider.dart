@@ -253,8 +253,11 @@ class DetectionProvider extends ChangeNotifier with WidgetsBindingObserver {
     final lat = position?.latitude ?? -6.2088;
     final lng = position?.longitude ?? 106.8456;
 
+    // Use higher threshold to reduce false positives
+    final threshold = _detectionService.isModelLoaded ? 0.55 : 0.5;
+
     // Run detection
-    _detectionService.detectFromImage(image).then((result) {
+    _detectionService.detectFromImage(image, threshold: threshold).then((result) {
       if (!_isDetecting) return;
 
       if (result.detections.isNotEmpty) {
@@ -266,10 +269,13 @@ class DetectionProvider extends ChangeNotifier with WidgetsBindingObserver {
         );
 
         _currentConfidence = best.confidence;
-        _handleDetection(best.classIndex, best.confidence, lat, lng, result.detections);
+
+        // Only count if confidence is high enough
+        if (best.confidence >= 0.6) {
+          _handleDetection(best.classIndex, best.confidence, lat, lng, result.detections);
+        }
       } else {
         _currentDetections = [];
-        // _lastPersistedDetections stays unchanged — boxes remain visible
       }
 
       notifyListeners();
