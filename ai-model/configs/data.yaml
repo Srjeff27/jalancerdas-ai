@@ -1,22 +1,24 @@
 # JalanCerdas AI - YOLO Dataset Configuration
-# Pothole detection dataset config for YOLOv8/YOLO11 training
-# Usage: yolo detect train data=configs/data.yaml model=yolov8n.pt
+# 6-class road damage detection (kerusakan jalan)
 
-# Path to dataset root directory (relative to this config file)
+# Path to dataset root directory
+# Adjust based on where your dataset is located:
+#   - Local: ../dataset
+#   - Kaggle: /content/dataset
+#   - Colab: /content/dataset
 path: ../dataset
-
-# Train images directory
 train: train/images
-
-# Validation images directory
 val: val/images
-
-# Test images directory (optional, used for final evaluation)
 test: test/images
 
 # Number of classes
-nc: 1
+nc: 6
 
-# Class names
+# Class names — order must match training labels
 names:
-  0: pothole
+  0: retak_memanjang              # Longitudinal crack
+  1: pengelupasan_lapisan_permukaan  # Surface peeling
+  2: lubang                       # Pothole
+  3: retak_kulit_buaya            # Alligator crack
+  4: retak_blok                   # Block crack
+  5: retak_pinggir                # Edge crack

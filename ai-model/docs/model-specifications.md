@@ -2,18 +2,19 @@
 
 ## Overview
 
-YOLO-based pothole detection model optimized for real-time mobile inference on Android devices.
+YOLO-based road damage detection model optimized for real-time mobile inference on Android dashcam devices.
 
 ## Model Architecture
 
 | Property | Value |
 |----------|-------|
-| Architecture | YOLOv8n / YOLO11n (Nano) |
-| Backbone | CSPDarknet / EfficientRep |
-| Neck | PANet / Rep-PAN |
+| Architecture | YOLOv8s (Small) |
+| Backbone | CSPDarknet |
+| Neck | PANet |
 | Head | YOLOv8 Detect |
-| Parameters | ~3.2M (nano variant) |
-| FLOPs | ~8.7G |
+| Parameters | ~11.2M |
+| FLOPs | ~28.6G |
+| Model Size (FP16) | ~22 MB |
 
 ## Input Specification
 
@@ -30,27 +31,30 @@ YOLO-based pothole detection model optimized for real-time mobile inference on A
 | Property | Value |
 |----------|-------|
 | Format | Bounding boxes + class + confidence |
-| Output shape | [1, N, 5+] where N = number of detections |
+| Output shape | [1, 84, 8400] (YOLOv8 format) |
 | Box format | xywh (center x, center y, width, height) — normalized |
 | Coordinates | Normalized to [0, 1] relative to input size |
 | Confidence | Float [0, 1] — detection confidence score |
-| NMS | Applied with IoU threshold (default 0.6) |
+| NMS | Applied with IoU threshold 0.6 |
 
-## Classes
+## Classes (6-class Road Damage Detection)
 
-| ID | Name | Description |
-|----|------|-------------|
-| 0 | pothole | Road surface defect — depression, crack, or cavity |
-
-Single-class detection model. Extensible to additional road defect types.
+| ID | Name | Indonesian | Description |
+|----|------|------------|-------------|
+| 0 | longitudinal_crack | Retak Memanjang | Crack running along road direction |
+| 1 | surface_peeling | Pengelupasan Lapisan Permukaan | Surface layer peeling off |
+| 2 | pothole | Lubang | Road cavity/depression |
+| 3 | alligator_crack | Retak Kulit Buaya | Interconnected cracks (like alligator skin) |
+| 4 | block_crack | Retak Blok | Rectangular/block-shaped cracks |
+| 5 | edge_crack | Retak Pinggir | Crack along road edge |
 
 ## Quantization
 
 | Format | Precision | Size | Accuracy Impact |
 |--------|-----------|------|-----------------|
-| FP32 (PyTorch) | 32-bit float | ~12-15 MB | Baseline |
-| FP16 (TFLite) | 16-bit float | ~6-8 MB | Negligible (< 0.5% mAP drop) |
-| INT8 (TFLite) | 8-bit integer | ~3-4 MB | Small (1-2% mAP drop) |
+| FP32 (PyTorch) | 32-bit float | ~22 MB | Baseline |
+| FP16 (TFLite) | 16-bit float | ~11 MB | Negligible (< 0.5% mAP drop) |
+| INT8 (TFLite) | 8-bit integer | ~6 MB | Small (1-2% mAP drop) |
 
 **Target:** FP16 TFLite for production mobile deployment.
 
@@ -58,93 +62,111 @@ Single-class detection model. Extensible to additional road defect types.
 
 | Metric | Target | Acceptable |
 |--------|--------|------------|
-| mAP@50 | ≥ 0.70 | ≥ 0.50 |
+| mAP@50 | ≥ 0.70 | ≥ 0.55 |
 | mAP@50-95 | ≥ 0.50 | ≥ 0.35 |
 | Precision | ≥ 0.75 | ≥ 0.60 |
 | Recall | ≥ 0.70 | ≥ 0.55 |
 | F1 Score | ≥ 0.70 | ≥ 0.55 |
-| Model size | < 10 MB | < 15 MB |
-| Inference time (mobile) | ~50 ms | < 100 ms |
+| Model size | < 15 MB | < 25 MB |
+| Inference time (mobile) | ~80 ms | < 150 ms |
+
+## Training Configuration (Improved)
+
+| Parameter | Value | Why |
+|-----------|-------|-----|
+| Base model | yolov8s.pt (pretrained on COCO) | Better capacity than nano |
+| Epochs | 150 | More time to converge |
+| Batch size | 16 | Stable gradient estimates |
+| Image size | 640 | Good detail capture |
+| Optimizer | AdamW | Better than SGD for small datasets |
+| Learning rate | 0.001 → 0.00001 | Lower for stability |
+| LR schedule | Cosine | Better convergence |
+| Warmup | 5 epochs | Avoid early divergence |
+| Augmentation | Mosaic + Mixup + CopyPaste | Better generalization |
+| Class balancing | Enabled | Handle imbalanced classes |
+
+## Augmentation Strategy
+
+| Augmentation | Value | Purpose |
+|--------------|-------|---------|
+| Mosaic | 1.0 | Combine 4 images for context |
+| Mixup | 0.15 | Blend images for robustness |
+| Copy-Paste | 0.1 | Duplicate objects for balance |
+| HSV-Hue | 0.02 | Color variation |
+| HSV-Saturation | 0.7 | Saturation variation |
+| HSV-Value | 0.4 | Brightness variation |
+| Rotation | ±5° | Slight angle changes |
+| Scale | 0.5 | Size variation |
+| Flip | 0.5 | Horizontal flip |
+| Erasing | 0.3 | Random occlusion |
 
 ## Inference Time Benchmarks
 
 | Platform | Device | FP16 (ms) | INT8 (ms) |
 |----------|--------|-----------|-----------|
-| Android | Snapdragon 8 Gen 2 | ~35 | ~25 |
-| Android | Snapdragon 765G | ~55 | ~40 |
-| Android | MediaTek Dimensity 900 | ~65 | ~50 |
-| iOS | A16 Bionic | ~30 | ~20 |
-| iOS | A14 Bionic | ~40 | ~30 |
-| Desktop | NVIDIA RTX 3060 | ~8 | ~5 |
-| Desktop | CPU (i7-12700) | ~80 | ~60 |
+| Android | Snapdragon 8 Gen 2 | ~50 | ~35 |
+| Android | Snapdragon 765G | ~80 | ~55 |
+| Android | MediaTek Dimensity 900 | ~95 | ~70 |
+| iOS | A16 Bionic | ~45 | ~30 |
+| Desktop | NVIDIA RTX 3060 | ~12 | ~8 |
+| Desktop | CPU (i7-12700) | ~120 | ~90 |
 
-*Benchmarks are approximate. Actual performance depends on image content and concurrent processes.*
-
-## Training Configuration
-
-| Parameter | Value |
-|-----------|-------|
-| Base model | yolov8n.pt (pretrained on COCO) |
-| Epochs | 100-200 |
-| Batch size | 16 |
-| Image size | 640 |
-| Optimizer | Auto (SGD or AdamW) |
-| Learning rate | 0.01 → 0.0001 (cosine) |
-| Augmentation | Mosaic, HSV, flip, scale, mixup |
-| Early stopping | 50 epochs patience |
-| Hardware | GPU recommended (NVIDIA with CUDA) |
+*Benchmarks are approximate. YOLOv8s is ~3x slower than YOLOv8n but significantly more accurate.*
 
 ## Dataset Requirements
 
 | Property | Requirement |
 |----------|-------------|
-| Min images | 500+ |
-| Recommended images | 2000+ |
+| Min images | 1000+ |
+| Recommended images | 3000+ |
+| Per-class instances | 200+ each |
 | Annotation format | YOLO (class cx cy w h) |
 | Image formats | JPG, PNG |
 | Split ratio | 80% train / 10% val / 10% test |
 | Labeling tools | Roboflow, CVAT, LabelImg |
 
-## Export Formats
+## How to Train
 
-| Format | Use Case | Command |
-|--------|----------|---------|
-| TFLite (FP16) | Android production | `--half` |
-| TFLite (INT8) | Android size-constrained | `--int8` |
-| ONNX | Cross-platform | `format=onnx` |
-| TorchScript | PyTorch mobile | `format=torchscript` |
-| CoreML | iOS production | `format=coreml` |
+### Quick Start (Local)
+```bash
+cd ai-model
 
-## Mobile Integration
+# Train with improved settings (auto-detect GPU)
+python scripts/train_improved.py
 
-### Android (Flutter)
+# Train on specific GPU
+python scripts/train_improved.py --device 0
 
-```yaml
-# pubspec.yaml
-dependencies:
-  tflite_flutter: ^0.10.4
-  camera: ^0.10.5
+# Train with more epochs
+python scripts/train_improved.py --epochs 200
 
-# assets
-flutter:
-  assets:
-    - assets/models/pothole_detector.tflite
+# Train and export to TFLite
+python scripts/train_improved.py --export
 ```
 
-```dart
-// Load model
-final interpreter = await Interpreter.fromAsset('pothole_detector.tflite');
-
-// Preprocess frame
-final input = preprocessFrame(cameraFrame, 640, 640);
-
-// Run inference
-final output = List.filled(1 * N * 5, 0.0).reshape([1, N, 5]);
-interpreter.run(input, output);
-
-// Postprocess results
-final detections = postprocess(output, confidenceThreshold: 0.25);
+### Google Colab (Free GPU)
+```python
+# In Colab notebook:
+!git clone https://github.com/Srjeff27/jalancerdas-ai.git
+%cd jalancerdas-ai/ai-model
+!python scripts/train_improved.py --device 0 --export
 ```
+
+### Export to TFLite
+```bash
+# After training, export manually
+python scripts/export_tflite.py --weights runs/train_improved/weights/best.pt
+```
+
+## Model Comparison
+
+| Model | Params | mAP@50 | Speed (ms) | Size | Best For |
+|-------|--------|--------|------------|------|----------|
+| YOLOv8n | 3.2M | ~0.55 | ~35 | ~6 MB | Real-time, low-end devices |
+| **YOLOv8s** | **11.2M** | **~0.70** | **~80** | **~22 MB** | **Best balance (recommended)** |
+| YOLOv8m | 25.9M | ~0.78 | ~150 | ~52 MB | High accuracy, powerful devices |
+| YOLO11n | 2.6M | ~0.58 | ~30 | ~5 MB | Latest architecture, fast |
+| YOLO11s | 9.4M | ~0.73 | ~70 | ~20 MB | Latest architecture, balanced |
 
 ## Limitations
 
@@ -153,12 +175,13 @@ final detections = postprocess(output, confidenceThreshold: 0.25);
 3. **Speed**: Fast-moving camera causes motion blur
 4. **Scale**: Very small potholes (< 1% of frame) may be missed
 5. **Occlusion**: Partially covered potholes harder to detect
-6. **Road type**: Trained primarily on asphalt roads
+6. **Road type**: Trained primarily on Indonesian asphalt roads
 
 ## Future Improvements
 
-- Multi-class detection (cracks, bumps, debris)
-- Instance segmentation for precise boundary
-- Video-based temporal consistency
-- Edge detection model for low-power devices
-- Federated learning for continuous improvement
+- [ ] Instance segmentation for precise damage boundaries
+- [ ] Severity scoring (depth/width estimation)
+- [ ] Temporal model (video-based detection)
+- [ ] Edge deployment with TensorRT
+- [ ] Federated learning for continuous improvement
+- [ ] Multi-weather training (rain, night, fog)
