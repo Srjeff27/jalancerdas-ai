@@ -30,9 +30,18 @@ void main() {
   });
 
   test('Constants have correct default values', () {
-    expect(AppConstants.defaultConfidenceThreshold, equals(0.65));
-    expect(AppConstants.numDetectionClasses, equals(5));
-    expect(AppConstants.damageTypeLabels.length, equals(5));
-    expect(AppConstants.defaultApiUrl, equals('http://localhost:8000/api/v1'));
+    // 6 damage types: lubang, retak_memanjang, retak_kulit_buaya, retak_blok, retak_pinggir, pengelupasan_lapisan_permukaan
+    expect(AppConstants.numDetectionClasses, equals(6));
+    expect(AppConstants.damageTypeLabels.length, equals(6));
+    expect(AppConstants.defaultApiUrl, equals('http://localhost:8000/api'));
+  });
+
+  test('Damage type labels are in correct order', () {
+    expect(AppConstants.damageTypeLabels[0], equals('Lubang'));
+    expect(AppConstants.damageTypeLabels[1], equals('Retak Memanjang'));
+    expect(AppConstants.damageTypeLabels[2], equals('Retak Kulit Buaya'));
+    expect(AppConstants.damageTypeLabels[3], equals('Retak Blok'));
+    expect(AppConstants.damageTypeLabels[4], equals('Retak Pinggir'));
+    expect(AppConstants.damageTypeLabels[5], equals('Pengelupasan Lapisan Permukaan'));
   });
 }

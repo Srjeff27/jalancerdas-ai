@@ -237,9 +237,14 @@ class DetectionProvider extends ChangeNotifier with WidgetsBindingObserver {
   void _processFrame() {
     if (!_isDetecting) return;
 
+    // Skip if GPS not available — don't save detection with unknown location
     final position = _locationService.currentPosition;
-    final lat = position?.latitude ?? -6.2088;
-    final lng = position?.longitude ?? 106.8456;
+    if (position == null) {
+      debugPrint('DetectionProvider: GPS not available, skipping detection');
+      return;
+    }
+    final lat = position.latitude;
+    final lng = position.longitude;
 
     if (_mockMode) {
       _processMockFrame(lat, lng);
@@ -249,9 +254,14 @@ class DetectionProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// Process a camera image frame
   void _processImageFrame(CameraImage image) {
     if (!_isDetecting) return;
+
+    // Skip if GPS not available — don't save detection with unknown location
     final position = _locationService.currentPosition;
-    final lat = position?.latitude ?? -6.2088;
-    final lng = position?.longitude ?? 106.8456;
+    if (position == null) {
+      return; // Silently skip — GPS is required for meaningful detection
+    }
+    final lat = position.latitude;
+    final lng = position.longitude;
 
     // Use higher threshold to reduce false positives
     final threshold = _detectionService.isModelLoaded ? 0.55 : 0.5;

@@ -5,13 +5,17 @@ Provides endpoints for detection CRUD, authentication, file upload,
 and statistics for the JalanCerdas AI dashboard.
 """
 
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.database import init_db
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -30,10 +34,23 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS middleware
+# Global exception handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch-all exception handler for unhandled errors."""
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal server error",
+            "message": str(exc) if settings.DEBUG else "An unexpected error occurred",
+        },
+    )
+
+# CORS middleware — use configured origins (not wildcard)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins in development
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

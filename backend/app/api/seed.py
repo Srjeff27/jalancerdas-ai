@@ -1,10 +1,11 @@
 """Seed data API endpoint for development/testing."""
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import hash_password
+from app.core.config import settings
+from app.core.security import get_current_user, hash_password
 from app.database import get_db
 from app.models.detection import Detection
 from app.models.user import User
@@ -40,15 +41,26 @@ SEED_DETECTIONS = [
 
 
 @router.post("/")
-async def seed_data(db: AsyncSession = Depends(get_db)):
+async def seed_data(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     """Seed the database with 15 dummy detections across Indonesia.
 
+    Requires admin authentication. Only works when DEBUG=true.
     Also creates default admin user (admin/admin123) if not exists.
     Safe to call multiple times — skips if data already exists.
 
     Returns:
         Dict with creation status and counts.
     """
+    # Safety: only allow seeding in debug mode
+    if not settings.DEBUG:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Seed endpoint is only available in DEBUG mode",
+        )
+
     # Create admin user if not exists
     admin_result = await db.execute(select(User).where(User.username == "admin"))
     admin = admin_result.scalar_one_or_none()

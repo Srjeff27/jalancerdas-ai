@@ -14,6 +14,15 @@ dist/
 .next/
 out/
 
+# APK files (do not track binary releases)
+*.apk
+
+# Flutter / Android build artifacts
+mobile/build/
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/android/gradle/wrapper/gradle-wrapper.jar
+
 # Environment
 .env
 .env.local
@@ -29,10 +38,17 @@ out/
 .DS_Store
 Thumbs.db
 
-# Models
+# Models (large binaries)
 *.tflite
 *.pt
 *.weights
+*.onnx
+
+# Dataset (large files)
+ai-model/dataset/
+ai-model/train_model/
+ai-model/train_new_model/
+ai-model/yolov8n.pt
 
 # Database
 *.db

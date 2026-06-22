@@ -30,12 +30,48 @@ async def create_detection(
     Accepts multipart form data with optional image file upload.
     The image is stored in MinIO and linked to the detection.
     """
-    image_url = ""
+    # Input validation
+    if not damage_type or len(damage_type.strip()) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="damage_type cannot be empty",
+        )
+    if len(damage_type) > 100:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="damage_type must be 100 characters or less",
+        )
+    if not (0.0 <= confidence <= 1.0):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="confidence must be between 0.0 and 1.0",
+        )
+    if not (-90.0 <= latitude <= 90.0):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="latitude must be between -90.0 and 90.0",
+        )
+    if not (-180.0 <= longitude <= 180.0):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="longitude must be between -180.0 and 180.0",
+        )
+
+    # File size limit (10MB)
     if file and file.filename:
         file_bytes = await file.read()
+        if len(file_bytes) > 10 * 1024 * 1024:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="File size must be less than 10MB",
+            )
         uploaded_url = minio_service.upload_image(file_bytes, file.filename)
         if uploaded_url:
             image_url = uploaded_url
+        # Reset file pointer for potential re-read
+        file_bytes = b""
+    else:
+        image_url = ""
 
     parsed_detected_at = None
     if detected_at:

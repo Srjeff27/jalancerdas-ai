@@ -26,6 +26,14 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
 
+    # CORS
+    CORS_ORIGINS: str = "http://localhost:3001,http://localhost:3000,http://localhost:8888"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        """Parse CORS_ORIGINS string into a list."""
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
