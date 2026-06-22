@@ -144,6 +144,82 @@ double _calculateFrameQuality(Uint8List yBytes) {
   return (brightnessScore * 0.6 + contrastScore * 0.4).clamp(0.0, 1.0);
 }
 
+/// Analyze texture in a region to determine if it looks like road surface.
+/// Road surfaces typically have:
+/// - Medium brightness (not too dark like shadows, not too bright like sky)
+/// - Moderate texture variance (not flat like painted surfaces)
+/// - Grayish tones (not colorful like vegetation or signs)
+///
+/// Returns a score 0-1 where 1 = definitely road, 0 = definitely not road.
+double _analyzeRoadTexture(Uint8List yBytes, int imgWidth, int imgHeight,
+    double boxCx, double boxCy, double boxW, double boxH) {
+  // Convert normalized coordinates to pixel coordinates
+  final int cx = (boxCx * imgWidth).toInt().clamp(0, imgWidth - 1);
+  final int cy = (boxCy * imgHeight).toInt().clamp(0, imgHeight - 1);
+  final int halfW = (boxW * imgWidth / 2).toInt().clamp(1, imgWidth ~/ 2);
+  final int halfH = (boxH * imgHeight / 2).toInt().clamp(1, imgHeight ~/ 2);
+
+  // Sample pixels in the detection region
+  int sum = 0;
+  int minVal = 255;
+  int maxVal = 0;
+  int count = 0;
+  final int step = max(1, halfW ~/ 5);
+
+  for (int dy = -halfH; dy <= halfH; dy += step) {
+    for (int dx = -halfW; dx <= halfW; dx += step) {
+      final int px = cx + dx;
+      final int py = cy + dy;
+      if (px >= 0 && px < imgWidth && py >= 0 && py < imgHeight) {
+        final int idx = py * imgWidth + px;
+        if (idx < yBytes.length) {
+          final int val = yBytes[idx] & 0xFF;
+          sum += val;
+          if (val < minVal) minVal = val;
+          if (val > maxVal) maxVal = val;
+          count++;
+        }
+      }
+    }
+  }
+
+  if (count == 0) return 0.5; // Unknown
+
+  final double mean = sum / count;
+  final double range = (maxVal - minVal).toDouble();
+
+  // Road brightness score: roads are typically 60-180 brightness
+  double brightnessScore = 1.0;
+  if (mean < 40) {
+    brightnessScore = 0.2; // Too dark — likely shadow or night
+  } else if (mean < 60) {
+    brightnessScore = 0.6; // Dark road (wet or asphalt)
+  } else if (mean <= 180) {
+    brightnessScore = 1.0; // Ideal road brightness
+  } else if (mean <= 220) {
+    brightnessScore = 0.6; // Bright road (concrete)
+  } else {
+    brightnessScore = 0.1; // Too bright — likely sky or reflection
+  }
+
+  // Texture variance score: roads have moderate texture (not flat, not chaotic)
+  // Range of 20-100 is typical for road surfaces
+  double textureScore = 1.0;
+  if (range < 10) {
+    textureScore = 0.2; // Too uniform — painted surface, sign, or sky
+  } else if (range < 20) {
+    textureScore = 0.5; // Low texture — smooth road or painted area
+  } else if (range <= 100) {
+    textureScore = 1.0; // Good road texture
+  } else if (range <= 150) {
+    textureScore = 0.7; // High texture — rough surface or mixed content
+  } else {
+    textureScore = 0.3; // Too varied — likely complex scene (trees, buildings)
+  }
+
+  return (brightnessScore * 0.5 + textureScore * 0.5).clamp(0.0, 1.0);
+}
+
 class DetectionService {
   // TFLite interpreter - lazy loaded
   Interpreter? _interpreter;
@@ -162,19 +238,44 @@ class DetectionService {
   // YOLO model config — tunable
   static const int inputSize = 640;
   static const int numClasses = 6;
-  static const double confidenceThreshold = 0.55; // Higher = fewer false positives
-  static const double nmsIouThreshold = 0.5;
+  static const double confidenceThreshold = 0.65; // Raised from 0.55 — fewer false positives
+  static const double nmsIouThreshold = 0.45; // Tighter NMS
 
-  // Spatial filtering — only detect in road area (bottom 65% of frame)
-  // Top 35% is usually sky/buildings/people
-  static const double _roadAreaTopRatio = 0.35;
-  // Max bounding box size ratio — skip if larger than 40% of frame (probably not damage)
-  static const double _maxBoxSizeRatio = 0.40;
+  // ─── SPATIAL FILTERS ───────────────────────────────────────
+  // Road area: bottom 70% of frame (camera on dashcam sees road in lower portion)
+  static const double _roadAreaTopRatio = 0.30;
+  // Max bounding box area ratio — skip if > 25% of frame (probably a car/person)
+  static const double _maxBoxAreaRatio = 0.25;
   // Min bounding box size — skip tiny detections (noise)
-  static const double _minBoxSizeRatio = 0.02;
+  static const double _minBoxSizeRatio = 0.025;
+  // Max aspect ratio (w/h or h/w) — road damage is roughly square-ish
+  // A long thin box is likely a lane marking or shadow, not damage
+  static const double _maxAspectRatio = 4.0;
 
-  // Persistent detections — hold for N frames
-  static const int _persistFrames = 8;
+  // ─── ASPECT RATIO FILTERS ──────────────────────────────────
+  // Different damage types have expected aspect ratios
+  // lubang (pothole): roughly circular → ratio 0.5–2.0
+  // retak_memanjang (longitudinal crack): tall & thin → ratio 0.2–1.5
+  // retak_kulit_buaya (alligator crack): roughly square → ratio 0.5–2.0
+  // retak_blok (block crack): roughly square → ratio 0.5–2.0
+  // retak_pinggir (edge crack): along edge → ratio 0.3–3.0
+  // pengelupasan (surface peeling): irregular → ratio 0.3–3.0
+  static const double _minAspectForCrack = 0.15;
+  static const double _maxAspectForCrack = 5.0;
+  static const double _minAspectForPothole = 0.4;
+  static const double _maxAspectForPothole = 2.5;
+
+  // ─── TEMPORAL CONSISTENCY ───────────────────────────────────
+  // Require detection to appear in N consecutive frames before counting
+  static const int _minConsecutiveFrames = 2;
+  int _consecutiveCount = 0;
+  int _lastDetectedClass = -1;
+  double _lastDetectedConfidence = 0.0;
+  double _lastDetectedCx = 0.0;
+  double _lastDetectedCy = 0.0;
+
+  // ─── PERSISTENCE ────────────────────────────────────────────
+  static const int _persistFrames = 6;
   int _persistCounter = 0;
   List<BoundingBox> _lastDetections = [];
 
@@ -262,7 +363,6 @@ class DetectionService {
     final quality = _calculateFrameQuality(image.planes[0].bytes);
     if (quality < _minFrameQuality) {
       _skipFrameCount++;
-      // Only skip up to 5 consecutive frames, then process anyway
       if (_skipFrameCount < 5) {
         stopwatch.stop();
         return DetectionResult(
@@ -322,17 +422,55 @@ class DetectionService {
     _interpreter!.run(input, output);
 
     // Parse output
-    final detections = _parseOutput(output, threshold, imgWidth, imgHeight);
+    final detections = _parseOutput(output, threshold, imgWidth, imgHeight, image.planes[0].bytes);
 
-    // Persist detections for smoother display
+    // ─── TEMPORAL CONSISTENCY CHECK ───────────────────────────
+    // Only count detections that appear in multiple consecutive frames
     if (detections.isNotEmpty) {
-      _lastDetections = detections;
-      _persistCounter = _persistFrames;
-    } else if (_persistCounter > 0) {
-      _persistCounter--;
-      // Keep showing last detections
+      final best = detections.reduce(
+        (a, b) => a.confidence > b.confidence ? a : b,
+      );
+
+      // Normalize center position for comparison
+      final currentCx = best.x + best.width / 2;
+      final currentCy = best.y + best.height / 2;
+
+      // Check if this detection is similar to the previous frame's detection
+      final isSameDetection = _lastDetectedClass == best.classIndex &&
+          (currentCx - _lastDetectedCx).abs() < imgWidth * 0.15 && // Within 15% of frame width
+          (currentCy - _lastDetectedCy).abs() < imgHeight * 0.15; // Within 15% of frame height
+
+      if (isSameDetection) {
+        _consecutiveCount++;
+      } else {
+        _consecutiveCount = 1; // New detection, start counting
+      }
+
+      // Update tracking state
+      _lastDetectedClass = best.classIndex;
+      _lastDetectedConfidence = best.confidence;
+      _lastDetectedCx = currentCx;
+      _lastDetectedCy = currentCy;
+
+      // Only persist if detection has been consistent for N frames
+      if (_consecutiveCount >= _minConsecutiveFrames) {
+        _lastDetections = detections;
+        _persistCounter = _persistFrames;
+      } else {
+        // Not enough consecutive frames yet — keep showing previous detections if any
+        if (_persistCounter > 0) {
+          _persistCounter--;
+        } else {
+          _lastDetections = [];
+        }
+      }
     } else {
-      _lastDetections = [];
+      _consecutiveCount = 0;
+      if (_persistCounter > 0) {
+        _persistCounter--;
+      } else {
+        _lastDetections = [];
+      }
     }
 
     stopwatch.stop();
@@ -351,6 +489,7 @@ class DetectionService {
     double threshold,
     int imgWidth,
     int imgHeight,
+    Uint8List yBytes,
   ) {
     final detections = <BoundingBox>[];
 
@@ -378,22 +517,59 @@ class DetectionService {
       }
 
       if (bestClassScore > threshold) {
-        // ─── FILTER 1: Spatial — only bottom 65% of frame (road area) ───
-        // Top 35% is usually sky, buildings, people
+        // ─── FILTER 1: Spatial — only bottom 70% of frame (road area) ───
         final yNormalized = cy / inputSize;
         if (yNormalized < _roadAreaTopRatio) {
-          continue; // Skip — above road area
+          continue; // Skip — above road area (sky, buildings, people)
         }
 
-        // ─── FILTER 2: Size — skip too large (not damage) ───
-        final sizeRatio = (w * h) / (inputSize * inputSize);
-        if (sizeRatio > _maxBoxSizeRatio * _maxBoxSizeRatio) {
-          continue; // Skip — bounding box too large
+        // ─── FILTER 2: Area — skip too large (cars, people, buildings) ───
+        final areaRatio = (w * h) / (inputSize * inputSize);
+        if (areaRatio > _maxBoxAreaRatio) {
+          continue; // Skip — bounding box too large for road damage
         }
 
-        // ─── FILTER 3: Size — skip too tiny (noise) ───
+        // ─── FILTER 3: Size — skip too tiny (noise, texture) ───
         if (w < inputSize * _minBoxSizeRatio || h < inputSize * _minBoxSizeRatio) {
-          continue; // Skip — too small
+          continue; // Skip — too small to be meaningful damage
+        }
+
+        // ─── FILTER 4: Aspect ratio — road damage has expected shapes ───
+        final aspectRatio = w / h;
+        final invAspectRatio = h / w;
+        final maxAR = max(aspectRatio, invAspectRatio);
+
+        // General filter: skip extremely elongated boxes (lane markings, shadows)
+        if (maxAR > _maxAspectRatio) {
+          continue; // Skip — too elongated, not damage
+        }
+
+        // Class-specific aspect ratio filter
+        if (bestClass == 2) {
+          // lubang (pothole) — should be roughly circular
+          if (maxAR > _maxAspectForPothole) {
+            continue; // Skip — pothole shouldn't be this elongated
+          }
+        } else {
+          // Other crack types — allow more elongation but still bounded
+          if (maxAR > _maxAspectForCrack) {
+            continue; // Skip — too elongated for any damage type
+          }
+        }
+
+        // ─── FILTER 5: Texture analysis — verify area looks like road ───
+        // Only apply texture check for high-confidence detections to save CPU
+        if (bestClassScore > 0.7) {
+          final textureScore = _analyzeRoadTexture(
+            yBytes, imgWidth, imgHeight,
+            cx / inputSize, cy / inputSize,
+            w / inputSize, h / inputSize,
+          );
+          // If texture doesn't look like road, reduce effective confidence
+          if (textureScore < 0.3) {
+            // Area doesn't look like road surface — likely false positive
+            continue;
+          }
         }
 
         candidates.add(_DetectionCandidate(

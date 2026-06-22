@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'package:camera/camera.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -36,6 +37,14 @@ class DetectionProvider extends ChangeNotifier with WidgetsBindingObserver {
   // Persistent detections — survive across frames until explicitly cleared
   List<BoundingBox> _currentDetections = [];
   List<BoundingBox> _lastPersistedDetections = [];
+
+  // ─── COOLDOWN & DEDUPLICATION ──────────────────────────────
+  // Prevent repeated detections at the same location
+  static const int _cooldownSeconds = 30; // Minimum seconds between detections
+  static const double _minDistanceMeters = 50; // Minimum distance to count new detection
+  DateTime? _lastDetectionTime;
+  double? _lastDetectionLat;
+  double? _lastDetectionLng;
 
   // Getters
   bool get isDetecting => _isDetecting;
@@ -264,7 +273,7 @@ class DetectionProvider extends ChangeNotifier with WidgetsBindingObserver {
     final lng = position.longitude;
 
     // Use higher threshold to reduce false positives
-    final threshold = _detectionService.isModelLoaded ? 0.55 : 0.5;
+    final threshold = _detectionService.isModelLoaded ? 0.65 : 0.5;
 
     // Run detection
     _detectionService.detectFromImage(image, threshold: threshold).then((result) {
@@ -326,6 +335,57 @@ class DetectionProvider extends ChangeNotifier with WidgetsBindingObserver {
   String? _lastDetectedImagePath;
   String? get lastDetectedImagePath => _lastDetectedImagePath;
 
+  /// Check if we should skip this detection due to cooldown or location deduplication.
+  /// Returns true if detection should be SKIPPED.
+  bool _isWithinCooldown(double lat, double lng) {
+    // First detection ever — always allow
+    if (_lastDetectionTime == null || _lastDetectionLat == null || _lastDetectionLng == null) {
+      return false;
+    }
+
+    // Check time cooldown
+    final elapsed = DateTime.now().difference(_lastDetectionTime!);
+    if (elapsed.inSeconds < _cooldownSeconds) {
+      debugPrint('DetectionProvider: Cooldown active (${_cooldownSeconds - elapsed.inSeconds}s remaining)');
+      return true;
+    }
+
+    // Check distance — if within _minDistanceMeters of last detection, skip
+    final distance = _calculateDistance(
+      _lastDetectionLat!, _lastDetectionLng!, lat, lng,
+    );
+    if (distance < _minDistanceMeters) {
+      debugPrint('DetectionProvider: Too close to last detection (${distance.toStringAsFixed(0)}m < ${_minDistanceMeters}m)');
+      return true;
+    }
+
+    return false;
+  }
+
+  /// Calculate distance between two GPS coordinates using Haversine formula.
+  /// Returns distance in meters.
+  double _calculateDistance(double lat1, double lng1, double lat2, double lng2) {
+    const double earthRadius = 6371000; // Earth radius in meters
+    final double dLat = _toRadians(lat2 - lat1);
+    final double dLng = _toRadians(lng2 - lng1);
+    final double a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_toRadians(lat1)) * cos(_toRadians(lat2)) *
+        sin(dLng / 2) * sin(dLng / 2);
+    final double c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    return earthRadius * c;
+  }
+
+  double _toRadians(double degrees) {
+    return degrees * pi / 180;
+  }
+
+  /// Update cooldown state after a successful detection
+  void _updateCooldownState(double lat, double lng) {
+    _lastDetectionTime = DateTime.now();
+    _lastDetectionLat = lat;
+    _lastDetectionLng = lng;
+  }
+
   void _handleDetection(
     int classIndex,
     double confidence,
@@ -333,6 +393,11 @@ class DetectionProvider extends ChangeNotifier with WidgetsBindingObserver {
     double lng,
     List<BoundingBox> detections,
   ) async {
+    // ─── COOLDOWN & DEDUPLICATION CHECK ───────────────────────
+    if (_isWithinCooldown(lat, lng)) {
+      return; // Skip — too soon or too close to last detection
+    }
+
     final record = DetectionRecord(
       id: 'det_${DateTime.now().millisecondsSinceEpoch}',
       damageType: classIndex >= 0 && classIndex < DamageType.values.length
@@ -384,6 +449,9 @@ class DetectionProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     _saveDetection(record);
     _tryUpload(record);
+
+    // Update cooldown state — prevent re-detection at this location
+    _updateCooldownState(lat, lng);
   }
 
   // ─── Storage & Upload ───────────────────────────────────────
@@ -418,6 +486,35 @@ class DetectionProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   // ─── Public Methods ─────────────────────────────────────────
+
+  /// Get remaining cooldown seconds (0 if no cooldown active)
+  int get cooldownRemaining {
+    if (_lastDetectionTime == null) return 0;
+    final elapsed = DateTime.now().difference(_lastDetectionTime!);
+    final remaining = _cooldownSeconds - elapsed.inSeconds;
+    return remaining > 0 ? remaining : 0;
+  }
+
+  /// Get distance to last detection in meters, or null if no previous detection
+  double? get distanceToLastDetection {
+    if (_lastDetectionLat == null || _lastDetectionLng == null) return null;
+    final position = _locationService.currentPosition;
+    if (position == null) return null;
+    return _calculateDistance(
+      _lastDetectionLat!, _lastDetectionLng!,
+      position.latitude, position.longitude,
+    );
+  }
+
+  /// Manually reset cooldown — allows immediate detection at current location
+  /// Useful when user has moved to a new area
+  void resetCooldown() {
+    _lastDetectionTime = null;
+    _lastDetectionLat = null;
+    _lastDetectionLng = null;
+    debugPrint('DetectionProvider: Cooldown manually reset');
+    notifyListeners();
+  }
 
   Future<String?> takePicture() async {
     return await _cameraService.takePicture();
