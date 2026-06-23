@@ -81,8 +81,14 @@ async def root():
 
 
 @app.get("/health")
+@app.get("/api/health")
 async def health():
-    """Detailed health check endpoint."""
+    """Detailed health check endpoint.
+
+    Registered at both /health and /api/health so that:
+    - Docker health checks can use /health
+    - Mobile app (which uses /api prefix) can use /api/health
+    """
     return {"status": "healthy", "version": settings.APP_VERSION}
 
 

@@ -58,6 +58,7 @@ async def create_detection(
         )
 
     # File size limit (10MB)
+    image_url = ""
     if file and file.filename:
         file_bytes = await file.read()
         if len(file_bytes) > 10 * 1024 * 1024:
@@ -70,8 +71,6 @@ async def create_detection(
             image_url = uploaded_url
         # Reset file pointer for potential re-read
         file_bytes = b""
-    else:
-        image_url = ""
 
     parsed_detected_at = None
     if detected_at:

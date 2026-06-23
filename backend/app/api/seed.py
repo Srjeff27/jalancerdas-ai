@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.security import get_current_user, hash_password
+from app.core.security import hash_password
 from app.database import get_db
 from app.models.detection import Detection
 from app.models.user import User
@@ -43,11 +43,11 @@ SEED_DETECTIONS = [
 @router.post("/")
 async def seed_data(
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user),
 ):
     """Seed the database with 15 dummy detections across Indonesia.
 
-    Requires admin authentication. Only works when DEBUG=true.
+    Only works when DEBUG=true. No authentication required
+    (intended for development/testing).
     Also creates default admin user (admin/admin123) if not exists.
     Safe to call multiple times — skips if data already exists.
 

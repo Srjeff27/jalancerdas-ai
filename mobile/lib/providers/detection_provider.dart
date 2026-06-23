@@ -33,6 +33,7 @@ class DetectionProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _hasCamera = false;
   bool _mockMode = true;
   Timer? _detectionTimer;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   // Persistent detections — survive across frames until explicitly cleared
   List<BoundingBox> _currentDetections = [];
@@ -99,7 +100,7 @@ class DetectionProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     // Monitor connectivity
-    Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
       final result = results.isNotEmpty ? results.first : ConnectivityResult.none;
       final wasConnected = _isConnected;
       _isConnected = result != ConnectivityResult.none;
@@ -595,6 +596,7 @@ class DetectionProvider extends ChangeNotifier with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _detectionTimer?.cancel();
+    _connectivitySubscription?.cancel();
     _cameraService.dispose();
     _locationService.dispose();
     _detectionService.dispose();

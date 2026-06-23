@@ -41,6 +41,13 @@ async def upload_image(file: UploadFile = File(...)):
             detail="Empty file",
         )
 
+    # File size limit (10MB) — consistent with create_detection endpoint
+    if len(file_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File size must be less than 10MB",
+        )
+
     uploaded_url = minio_service.upload_image(file_bytes, file.filename)
 
     if uploaded_url is None:

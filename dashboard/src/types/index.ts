@@ -42,6 +42,8 @@ export interface LoginResponse {
 export interface DetectionListResponse {
   detections: Detection[];
   total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface ApiResponse<T> {
